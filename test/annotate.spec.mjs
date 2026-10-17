@@ -84,11 +84,8 @@ const ctx = {
       getSnapshot: () => ({ ids: ['a'], byId: { a: { id: 'a', retainedBy: { mainView: 1 } } } }),
       subscribe: () => () => {},
     },
-    scope: () => ({
-      get: (name) => (name === 'uiConversation'
-        ? { send: (text) => { sent.push(text); return Promise.resolve() } }
-        : undefined),
-    }),
+    scope: () => ({ id: 'scope' }),
+    sessionOf: () => ({ prompt: (parts, mode) => { sent.push(`${mode}:${parts[0].text}`); return Promise.resolve({ ok: true }) } }),
   },
   uiConversation: { send: (text) => { sent.push(text); return Promise.resolve() } },
   slots: {

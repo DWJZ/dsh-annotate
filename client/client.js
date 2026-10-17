@@ -101,8 +101,6 @@ window.__ModuleLoader__.load({
 		 * this closure: the injection is where a session-scoped ctx exists.
 		 */
 		let sendPending = null;
-		/** The Session-scoped context the composer dock injection runs in. */
-		let dockScope = null;
 		/**
 		 * Why the last send failed, per Session, shown in the chip row.
 		 *
@@ -497,16 +495,23 @@ window.__ModuleLoader__.load({
 
 			// The send uses the public conversation face: `IConversation.send` is contract, and the
 			// session scope is what makes it target this Session's own turn.
+			// The session face is the public way to put a message into a Session:
+			// `sessions.sessionOf(scope).prompt(parts, 'queue')` is what the conversation service
+			// itself calls for `send`, minus the private scoping it does on its own instance.
 			sendPending = (sessionId, text) => {
-				const conversation = dockScope?.get?.("uiConversation") ?? ctx.uiConversation;
-				if (conversation === undefined || typeof conversation.send !== "function") throw new Error(t("noSend"));
-				return conversation.send(text);
+				const scope = ctx.sessions.scope(sessionId);
+				if (scope === undefined) throw new Error(t("noSend"));
+				const session = ctx.sessions.sessionOf(scope);
+				if (session === undefined) throw new Error(t("noSend"));
+				return Promise.resolve(session.prompt([{ type: "text", text }], "queue")).then((outcome) => {
+					if (outcome?.ok === false) {
+						throw new Error(`prompt failed: ${String(outcome.error?.code)}: ${String(outcome.error?.message)}`);
+					}
+					return undefined;
+				});
 			};
 
-			ctx.slots.inject("conversation.input.dock", (barCtx) => {
-				// The injection runs inside the slot's Session scope, and that is what
-				// `IConversation.send` needs: it resolves the Session from its own instance.
-				dockScope = barCtx;
+			ctx.slots.inject("conversation.input.dock", () => {
 				const dispose = ctx.slots.register({
 					name: "conversation.input.dock",
 					id: "annotate",
