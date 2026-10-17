@@ -96,15 +96,10 @@ const buttonsIn = (node, found = []) => {
   return found
 }
 const buttons = buttonsIn(element)
-check('one chip per annotation plus the send chip', buttons.length === 2, JSON.stringify(buttons.map(button => button.children?.[0])))
-const sendAll = buttons.find(button => String(button.children?.[0]).startsWith('sendAllCount'))
+check('one remove action per chip, and no separate send button', buttons.length === 1, JSON.stringify(buttons.map(button => button.children?.[0])))
 const removeOne = buttons.find(button => button.children?.[0] === '✕')
-check('the send action carries the count', sendAll !== undefined && sendAll.children[0] === 'sendAllCount:1')
-check('and each chip can be removed', removeOne !== undefined)
-sendAll.props.onClick()
-await new Promise((resolve) => { setTimeout(resolve, 20) })
-check('the message went out once', sent.length === 1 && sent[0].includes('quoteLabel：「q」'), JSON.stringify(sent))
-check('and the chips were cleared', exports.pending.get('a').length === 0)
+check('each chip can be removed', removeOne !== undefined)
+exports.pending.set('a', [])
 check('an empty list renders nothing', registration.component(props) === null)
 
 console.log('removing one chip keeps the rest')

@@ -409,16 +409,19 @@ window.__ModuleLoader__.load({
 		 * @param node - the chip row.
 		 */
 		function alignToComposer(node) {
-			if (node === null || node === undefined || typeof document.querySelector !== "function") return;
-			const editor = document.querySelector('[contenteditable="true"]');
+			if (node === null || node === undefined) return;
+			// The composer is the last contenteditable on the page (the annotation editor lives
+			// inside this plugin's layer and is excluded first).
+			const editables = [...document.querySelectorAll('[contenteditable="true"]')]
+				.filter(element => element.closest?.("[data-dsh-annotate]") === null);
+			const editor = editables.at(-1);
 			const parent = node.parentElement;
-			if (editor === null || editor === undefined || parent === null || parent === undefined) return;
+			if (editor === undefined || parent === null || parent === undefined) return;
 			const box = editor.getBoundingClientRect();
 			const frame = parent.getBoundingClientRect();
 			if (box.width === 0) return;
 			node.style.paddingLeft = `${String(Math.max(0, box.left - frame.left))}px`;
 			node.style.paddingRight = `${String(Math.max(0, frame.right - box.right))}px`;
-			node.style.maxWidth = "none";
 		}
 
 		/**
@@ -454,11 +457,6 @@ window.__ModuleLoader__.load({
 				pending.set(sessionId, list);
 				changed();
 			};
-			const sendAll = () => {
-				const text = composeBatch(itemsOf(sessionId), t);
-				if (!sendable(text)) return;
-				void flush(sessionId, text);
-			};
 
 			return React.createElement("div", { className: "dsha_chips", ref: row },
 				...items.map((item, position) => React.createElement("span", {
@@ -476,8 +474,6 @@ window.__ModuleLoader__.load({
 					title: t("remove"),
 					onClick: (event) => { event?.stopPropagation?.(); remove(position) },
 				}, "✕"))),
-				React.createElement("button", { type: "button", className: "dsha_chip dsha_chip_send", onClick: sendAll },
-					t("sendAllCount", { count: items.length })),
 				problem === "" ? null : React.createElement("span", { className: "dsha_chip_note" }, problem === "no-send" ? t("noSend") : problem));
 		}
 		//#endregion
@@ -521,9 +517,12 @@ window.__ModuleLoader__.load({
 					if (target?.closest?.("[data-dsh-annotate]")) return;
 					// The composer is a contenteditable draft editor; a textarea is accepted too, so
 					// this keeps working if that surface ever changes.
+					const inEditor = target?.isContentEditable === true
+						|| target?.closest?.('[contenteditable="true"]') !== null;
 					const textarea = target?.tagName === "TEXTAREA";
-					if (target?.isContentEditable !== true && textarea !== true) return;
-					const sessionId = onScreen() ?? "";
+					if (!inEditor && textarea !== true) return;
+					// Prefer the Session on screen; fall back to whichever one is holding annotations.
+					const sessionId = onScreen() ?? [...pending.keys()].find(id => itemsOf(id).length > 0) ?? "";
 					const items = itemsOf(sessionId);
 					if (items.length === 0) return;
 					const batch = composeBatch(items, t);
