@@ -391,9 +391,12 @@ window.__ModuleLoader__.load({
 			const input = document.createElement("textarea");
 			input.className = "dsha_input";
 			input.placeholder = t("placeholder");
+			// No native focus ring: the card already frames the box, and the browser's blue
+			// outline reads as a different design language. The border carries the state instead.
 			input.style.cssText = "width:100%;box-sizing:border-box;min-height:72px;max-height:40vh;resize:vertical;padding:9px 10px;"
 				+ "border-radius:10px;font:inherit;font-size:13px;line-height:1.5;background:transparent;color:inherit;"
-				+ "border:1px solid color-mix(in srgb,CanvasText 22%,transparent)";
+				+ "outline:none;appearance:none;box-shadow:none;"
+				+ "border:1px solid color-mix(in srgb,CanvasText 28%,transparent)";
 
 			const row = document.createElement("div");
 			row.style.cssText = "display:flex;align-items:center;gap:8px";
