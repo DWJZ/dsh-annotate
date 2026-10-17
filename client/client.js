@@ -534,11 +534,11 @@ window.__ModuleLoader__.load({
 				const onUp = (event) => {
 					// A press inside this plugin's own UI must not rebuild the layer: it would
 					// unmount the editor the same press is opening.
-					if (event?.target?.closest?.("[data-dsh-annotate]")) return;
-					// An open editor owns the interaction: the release that follows its opening
-					// press lands wherever the card was moved away from, and re-offering there
-					// would wipe the card that just appeared.
-					if (editing !== null) return;
+					const inside = event?.target?.closest?.("[data-dsh-annotate]") != null;
+					if (inside) return;
+					// A press anywhere else closes an open editor: the card belongs to the selection
+					// that opened it.
+					if (editing !== null) { dismiss(); return; }
 					const point = typeof event?.clientX === "number" && typeof event?.clientY === "number"
 						? { x: event.clientX, y: event.clientY }
 						: undefined;
@@ -580,12 +580,14 @@ window.__ModuleLoader__.load({
 						inputActions?.setDraft?.("");
 					});
 				};
-				document.addEventListener("mouseup", onUp);
+				// Capture phase: a control that stops propagation on its own mouseup must not be able
+				// to leave the button or the card behind.
+				document.addEventListener("mouseup", onUp, true);
 				document.addEventListener("keydown", onKey);
 				document.addEventListener("keydown", onComposerEnter, true);
 				window.addEventListener("scroll", onScroll, true);
 				return () => {
-					document.removeEventListener("mouseup", onUp);
+					document.removeEventListener("mouseup", onUp, true);
 					document.removeEventListener("keydown", onKey);
 					document.removeEventListener("keydown", onComposerEnter, true);
 						window.removeEventListener("scroll", onScroll, true);
