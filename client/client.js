@@ -101,6 +101,10 @@ window.__ModuleLoader__.load({
 		 * this closure: the injection is where a session-scoped ctx exists.
 		 */
 		let sendPending = null;
+		/** `InputActions` from the composer slot: the native way to write the draft. */
+		let inputActions = null;
+		/** Latest `InputState` seen while rendering the chip row: the draft truth. */
+		let lastInput = null;
 		/**
 		 * Why the last send failed, per Session, shown in the chip row.
 		 *
@@ -502,7 +506,14 @@ window.__ModuleLoader__.load({
 		 * @param props - the slot's props, plus the Session these chips belong to.
 		 * @returns the chip row, or null while nothing waits.
 		 */
-		function AnnotateChips({ t, sessionId }) {
+		function AnnotateChips({ t, sessionId, useInput, inputActions: actions }) {
+			// The composer slot provides both: the reactive draft and the native actions that write
+			// it. Cached for the Enter handler, which runs outside this component.
+			if (typeof actions?.setDraft === "function") inputActions = actions;
+			if (typeof useInput === "function") {
+				const state = useInput((value) => value);
+				if (state !== undefined) lastInput = state;
+			}
 			const [, redraw] = React.useState(0);
 			React.useEffect(() => {
 				const watcher = () => { redraw((value) => value + 1) };
@@ -590,7 +601,7 @@ window.__ModuleLoader__.load({
 					const sessionId = onScreen() ?? [...pending.keys()].find(id => itemsOf(id).length > 0) ?? "";
 					const batch = composeBatch(itemsOf(sessionId), t);
 					if (!sendable(batch)) return;
-					const raw = textarea ? target.value : target.innerText ?? target.textContent ?? "";
+					const raw = String(lastInput?.draft ?? (textarea ? target.value : target.innerText ?? target.textContent ?? ""));
 					const draft = String(raw).trim();
 					const text = draft === "" ? batch : `${draft}\n\n${batch}`;
 					event.preventDefault();
@@ -599,7 +610,8 @@ window.__ModuleLoader__.load({
 						// Only clear the box when the message really went out; a failed send must
 						// leave the words where the person can try again.
 						if (sent !== true) return;
-						clearComposer(target, textarea);
+						if (typeof inputActions?.setDraft === "function") inputActions.setDraft("");
+						else clearComposer(target, textarea);
 					});
 				};
 				document.addEventListener("mouseup", onUp);
