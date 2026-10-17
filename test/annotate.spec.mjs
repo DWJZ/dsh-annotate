@@ -74,13 +74,13 @@ const ctx = {
   uiConversation: { send: () => Promise.resolve() },
 }
 exports.apply(ctx)
-check('it registers one dock', registration !== null && registration.options.name === 'conversation.input.dock', JSON.stringify(registration?.options))
-check('the dock is session-scoped by the owner, ordered before the todo dock', registration.options.order === 5)
+check('it registers into the composer strip', registration !== null && registration.options.name === 'conversation.input.overlay', JSON.stringify(registration?.options))
+check('ordered before the todo dock', registration.options.order === 5)
 
 exports.pending.set('a', [{ quote: 'q', comment: 'c' }])
 const props = { t, sessionId: 'a', send: (text) => { sent.push(text); return Promise.resolve() } }
 const element = registration.component(props)
-check('the dock renders while something waits', element !== null, String(element))
+check('the chips render while something waits', element !== null, String(element))
 /** Every button in a rendered tree, in document order. */
 const buttonsIn = (node, found = []) => {
   if (node === null || typeof node !== 'object') return found
@@ -89,16 +89,23 @@ const buttonsIn = (node, found = []) => {
   return found
 }
 const buttons = buttonsIn(element)
-check('it offers a send and a clear action', buttons.length === 3, JSON.stringify(buttons.map(button => button.children?.[0])))
-const sendAll = buttons.find(button => button.children?.[0] === 'sendAll')
-const removeOne = buttons.find(button => button.children?.[0] === 'remove')
-check('the send action is there', sendAll !== undefined)
-check('and a per-item remove action', removeOne !== undefined)
+check('one chip per annotation plus the send chip', buttons.length === 2, JSON.stringify(buttons.map(button => button.children?.[0])))
+const sendAll = buttons.find(button => String(button.children?.[0]).startsWith('sendAllCount'))
+const removeOne = buttons.find(button => button.children?.[0] === '✕')
+check('the send action carries the count', sendAll !== undefined && sendAll.children[0] === 'sendAllCount:1')
+check('and each chip can be removed', removeOne !== undefined)
 sendAll.props.onClick()
 await new Promise((resolve) => { setTimeout(resolve, 20) })
 check('the message went out once', sent.length === 1 && sent[0].includes('quoteLabel：「q」'), JSON.stringify(sent))
-check('and the list was emptied', exports.pending.get('a').length === 0)
+check('and the chips were cleared', exports.pending.get('a').length === 0)
 check('an empty list renders nothing', registration.component(props) === null)
+
+console.log('removing one chip keeps the rest')
+exports.pending.set('a', [{ quote: 'one', comment: 'c1' }, { quote: 'two', comment: 'c2' }])
+const twoChips = registration.component(props)
+const xMarks = buttonsIn(twoChips).filter(button => button.children?.[0] === '✕')
+xMarks[0].props.onClick()
+check('only the chosen annotation left', exports.pending.get('a').length === 1 && exports.pending.get('a')[0].quote === 'two', JSON.stringify(exports.pending.get('a')))
 
 console.log(failures === 0 ? '\nPASS' : `\n${String(failures)} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)

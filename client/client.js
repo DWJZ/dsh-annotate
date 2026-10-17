@@ -32,12 +32,16 @@ window.__ModuleLoader__.load({
 				"@keyframes dsha_in{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}",
 				"@keyframes dsha_out{to{opacity:0;transform:translateY(-4px) scale(.98)}}",
 				".dsha_row{display:flex;align-items:center;gap:8px;justify-content:flex-end}",
-				".dsha_dock{display:flex;flex-direction:column;gap:8px;padding:8px 0;font-size:13px;color:var(--dsw-alias-label-primary)}",
-				".dsha_head{display:flex;align-items:center;justify-content:space-between;color:var(--dsw-alias-label-secondary)}",
-				".dsha_item{display:flex;gap:8px;align-items:flex-start;padding:6px 8px;border:1px solid var(--dsw-alias-border-secondary);border-radius:8px}",
-				".dsha_item_text{display:flex;flex-direction:column;gap:2px;min-width:0}",
-				".dsha_item_quote{color:var(--dsw-alias-label-secondary);overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}",
-				".dsha_item_comment{color:var(--dsw-alias-label-primary)}",
+				".dsha_chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 2px}",
+				".dsha_chip{display:inline-flex;align-items:center;gap:6px;max-width:340px;height:26px;padding:0 8px;border-radius:999px;border:1px solid color-mix(in srgb,CanvasText 20%,transparent);background:color-mix(in srgb,CanvasText 8%,transparent);color:CanvasText;font:inherit;font-size:12px;line-height:1}",
+				".dsha_chip_quote,.dsha_chip_comment{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+				".dsha_chip_quote{max-width:150px;opacity:.65}",
+				".dsha_chip_comment{max-width:130px;font-weight:500}",
+				".dsha_chip_x{border:0;background:transparent;color:inherit;opacity:.55;cursor:pointer;font:inherit;font-size:11px;padding:0}",
+				".dsha_chip_x:hover{opacity:1}",
+				".dsha_chip_send{cursor:pointer;border-color:transparent;background:CanvasText;color:Canvas;font-weight:600}",
+				".dsha_chip_note{font-size:11px;opacity:.6}",
+
 				".dsha_grow{flex:1;min-width:0}",
 				"::highlight(dsh-annotate){background-color:color-mix(in srgb, var(--dsw-alias-label-primary) 22%, transparent)}"
 			].join("");
@@ -55,7 +59,7 @@ window.__ModuleLoader__.load({
 			hint: "Enter 保存 · Shift+Enter 换行",
 			save: "保存",
 			cancel: "取消",
-			dockTitle: "待发送的标注（{count}）",
+			sendAllCount: "一起发送（{count}）",
 			remove: "删除",
 			sendAll: "一起发送",
 			clear: "清空",
@@ -72,7 +76,7 @@ window.__ModuleLoader__.load({
 			hint: "Enter saves · Shift+Enter breaks the line",
 			save: "Save",
 			cancel: "Cancel",
-			dockTitle: "Annotations to send ({count})",
+			sendAllCount: "Send all ({count})",
 			remove: "Remove",
 			sendAll: "Send them together",
 			clear: "Clear",
@@ -349,13 +353,15 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 
-		//#region dock
+		//#region composer chips
 		/**
-		 * The list above the composer: what waits, and one button that sends it all.
-		 * @param props - the slot's props, plus the Session this dock belongs to and the send it may use.
-		 * @returns the dock element, or null while nothing waits.
+		 * The chips at the top of the composer: one per waiting annotation, plus the action
+		 * that sends them all. Native attachments live in the same strip, so a person reads
+		 * both the same way — something attached to what they are about to send.
+		 * @param props - the slot's props, plus the Session these chips belong to and the send they may use.
+		 * @returns the chip row, or null while nothing waits.
 		 */
-		function AnnotateDock({ t, sessionId, send }) {
+		function AnnotateChips({ t, sessionId, send }) {
 			const [, redraw] = React.useState(0);
 			React.useEffect(() => {
 				const watcher = () => { redraw((value) => value + 1) };
@@ -363,8 +369,7 @@ window.__ModuleLoader__.load({
 				return () => { watchers.delete(watcher) };
 			}, []);
 			const items = itemsOf(sessionId);
-			const notice = React.useState("");
-			const [message, setMessage] = notice;
+			const [message, setMessage] = React.useState("");
 			if (items.length === 0) return null;
 
 			const remove = (position) => {
@@ -373,7 +378,6 @@ window.__ModuleLoader__.load({
 				pending.set(sessionId, list);
 				changed();
 			};
-			const clear = () => { pending.set(sessionId, []); changed(); };
 			const sendAll = () => {
 				const text = composeBatch(itemsOf(sessionId), t);
 				if (!sendable(text)) return;
@@ -384,18 +388,25 @@ window.__ModuleLoader__.load({
 				}).catch((failure) => { setMessage(String(failure?.message ?? failure)) });
 			};
 
-			return React.createElement("div", { className: "dsha_dock" },
-				React.createElement("div", { className: "dsha_head" },
-					React.createElement("span", null, t("dockTitle", { count: items.length })),
-					React.createElement("span", { className: "dsha_row" },
-						React.createElement("button", { type: "button", onClick: clear }, t("clear")),
-						React.createElement("button", { type: "button", onClick: sendAll }, t("sendAll")))),
-				...items.map((item, position) => React.createElement("div", { className: "dsha_item", key: `${String(position)}-${item.quote.slice(0, 12)}` },
-					React.createElement("div", { className: "dsha_item_text dsha_grow" },
-						React.createElement("div", { className: "dsha_item_quote" }, item.quote),
-						React.createElement("div", { className: "dsha_item_comment" }, item.comment)),
-					React.createElement("button", { type: "button", onClick: () => { remove(position) } }, t("remove")))),
-				message === "" ? null : React.createElement("div", { className: "dsha_item_quote" }, message));
+			return React.createElement("div", { className: "dsha_chips" },
+				...items.map((item, position) => React.createElement("span", {
+					className: "dsha_chip",
+					key: `${String(position)}-${item.quote.slice(0, 12)}`,
+					// The chip is one line by design; the whole annotation is on hover.
+					title: `「${item.quote}」\n${item.comment}`,
+				},
+				React.createElement("span", { className: "dsha_chip_quote" }, `「${item.quote}」`),
+				React.createElement("span", { className: "dsha_chip_comment" }, item.comment),
+				React.createElement("button", {
+					type: "button",
+					className: "dsha_chip_x",
+					"aria-label": t("remove"),
+					title: t("remove"),
+					onClick: (event) => { event?.stopPropagation?.(); remove(position) },
+				}, "✕"))),
+				React.createElement("button", { type: "button", className: "dsha_chip dsha_chip_send", onClick: sendAll },
+					t("sendAllCount", { count: items.length })),
+				message === "" ? null : React.createElement("span", { className: "dsha_chip_note" }, message));
 		}
 		//#endregion
 
@@ -436,16 +447,18 @@ window.__ModuleLoader__.load({
 				};
 			}, "dsh-annotate: selection affordance");
 
-			ctx.slots.inject("conversation.input.dock", (dockCtx) => {
+			// The strip at the top of the composer: the same one native attachments draw in,
+			// which is why these read as "attached to what I am about to send".
+			ctx.slots.inject("conversation.input.overlay", (barCtx) => {
 				const dispose = ctx.slots.register({
-					name: "conversation.input.dock",
+					name: "conversation.input.overlay",
 					id: "annotate",
 					order: 5,
 					locale: NS,
-				}, (props) => AnnotateDock({
+				}, (props) => AnnotateChips({
 					...props,
 					sessionId: onScreen() ?? "",
-					send: (text) => dockCtx.uiConversation.send(text),
+					send: (text) => barCtx.uiConversation.send(text),
 				}));
 				return () => { dispose() };
 			});
