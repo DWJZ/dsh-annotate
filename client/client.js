@@ -234,6 +234,8 @@ window.__ModuleLoader__.load({
 		let layer = null;
 		/** The Session the open editor belongs to. */
 		let editing = null;
+		/** When the open editor appeared: its own opening press must not close it. */
+		let openedAt = 0;
 
 		/**
 		 * The layer that holds this plugin's floating UI.
@@ -455,6 +457,7 @@ window.__ModuleLoader__.load({
 			row.append(hint, cancel, save);
 			card.append(title, quote, input, row);
 			editing = sessionId;
+			openedAt = Date.now();
 			if (rect !== undefined) place(card, rect);
 			input.focus();
 		}
@@ -537,8 +540,13 @@ window.__ModuleLoader__.load({
 					const inside = event?.target?.closest?.("[data-dsh-annotate]") != null;
 					if (inside) return;
 					// A press anywhere else closes an open editor: the card belongs to the selection
-					// that opened it.
-					if (editing !== null) { dismiss(); return; }
+					// that opened it. The release of the press that opened it is not "anywhere else" —
+					// the card may have been placed away from the cursor, leaving bare text under it.
+					if (editing !== null) {
+						if (Date.now() - openedAt < 300) return;
+						dismiss();
+						return;
+					}
 					const point = typeof event?.clientX === "number" && typeof event?.clientY === "number"
 						? { x: event.clientX, y: event.clientY }
 						: undefined;
