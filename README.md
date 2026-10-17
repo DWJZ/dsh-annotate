@@ -10,7 +10,7 @@ Select a passage of an answer, write what you think about it; annotate as many p
 
 ## What it does
 
-- Select text in an answer and a small **Annotate** button appears next to the selection; open it and write the comment for that passage.
+- Select text in an answer and a small **Annotate** button appears next to the selection; open it and write the comment for that passage. **Enter saves, Shift+Enter breaks the line**, and the button and card each animate in and out briefly.
 - Annotate as often as you like, each one independent: its own quote, its own comment.
 - The dock above the composer lists what is waiting to be sent (quote + comment), with per-item removal and a clear action.
 - **Send them together** composes them into one numbered message in the current Session:

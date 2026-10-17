@@ -27,10 +27,10 @@ window.__ModuleLoader__.load({
 			const tag = document.createElement("style");
 			tag.setAttribute("data-plugin-css", CSS_ID);
 			tag.textContent = [
-				".dsha_button{position:absolute;z-index:2147483000;display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--dsw-alias-border-secondary);border-radius:8px;background:var(--dsw-alias-bg-overlay, Canvas);color:var(--dsw-alias-label-primary);font-size:12px;line-height:1.6;box-shadow:0 4px 16px rgb(0 0 0 / 18%);cursor:pointer}",
-				".dsha_card{position:absolute;z-index:2147483001;display:flex;flex-direction:column;gap:8px;width:320px;padding:12px;border:1px solid var(--dsw-alias-border-secondary);border-radius:12px;background:var(--dsw-alias-bg-overlay, Canvas);box-shadow:0 8px 28px rgb(0 0 0 / 22%)}",
-				".dsha_quote{max-height:72px;overflow:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:1.6;white-space:pre-wrap}",
-				".dsha_input{width:100%;min-height:64px;resize:vertical;padding:8px;border:1px solid var(--dsw-alias-border-secondary);border-radius:8px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px}",
+				".dsha_in{animation:dsha_in .12s ease-out}",
+				".dsha_leave{animation:dsha_out .1s ease-in forwards}",
+				"@keyframes dsha_in{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}",
+				"@keyframes dsha_out{to{opacity:0;transform:translateY(-4px) scale(.98)}}",
 				".dsha_row{display:flex;align-items:center;gap:8px;justify-content:flex-end}",
 				".dsha_dock{display:flex;flex-direction:column;gap:8px;padding:8px 0;font-size:13px;color:var(--dsw-alias-label-primary)}",
 				".dsha_head{display:flex;align-items:center;justify-content:space-between;color:var(--dsw-alias-label-secondary)}",
@@ -52,6 +52,7 @@ window.__ModuleLoader__.load({
 			title: "标注这段回答",
 			comment: "备注",
 			placeholder: "这条想说什么？（例如：这里应该是 X 而不是 Y）",
+			hint: "Enter 保存 · Shift+Enter 换行",
 			save: "保存",
 			cancel: "取消",
 			dockTitle: "待发送的标注（{count}）",
@@ -68,6 +69,7 @@ window.__ModuleLoader__.load({
 			title: "Annotate this passage",
 			comment: "Comment",
 			placeholder: "What about it? (for example: this should be X, not Y)",
+			hint: "Enter saves · Shift+Enter breaks the line",
 			save: "Save",
 			cancel: "Cancel",
 			dockTitle: "Annotations to send ({count})",
@@ -176,19 +178,44 @@ window.__ModuleLoader__.load({
 		/** The Session the open editor belongs to. */
 		let editing = null;
 
-		/** The layer that holds this plugin's floating UI, created on first use. */
+		/**
+		 * The layer that holds this plugin's floating UI.
+		 *
+		 * Fixed and pointer-transparent, so a child's offsets are viewport-relative and the
+		 * layer never swallows a click meant for the page behind it.
+		 */
 		function layerOf() {
 			if (layer !== null) return layer;
 			layer = document.createElement("div");
 			layer.setAttribute("data-dsh-annotate", "layer");
+			layer.style.cssText = "position:fixed;left:0;top:0;right:0;bottom:0;z-index:2147483000;pointer-events:none";
 			document.body.appendChild(layer);
 			return layer;
 		}
 
-		/** Remove the floating UI without touching the waiting list. */
-		function dismiss() {
+		/**
+		 * Appearance shared by both floating surfaces.
+		 *
+		 * Inline on purpose: this is the one piece of UI that must be usable even when the
+		 * stylesheet never arrives, and system colors follow the OS theme on their own.
+		 */
+		const SURFACE = "position:absolute;pointer-events:auto;box-sizing:border-box;border-radius:14px;"
+			+ "background:Canvas;color:CanvasText;border:1px solid color-mix(in srgb,CanvasText 18%,transparent);"
+			+ "box-shadow:0 12px 36px rgb(0 0 0 / 28%);font:inherit";
+
+		/**
+		 * Remove the floating UI, letting its exit animation run unless told it must go now.
+		 * @param immediate - drop it in the same frame.
+		 */
+		function dismiss(immediate = false) {
 			editing = null;
-			if (layer !== null) layer.textContent = "";
+			if (layer === null) return;
+			const child = layer.firstElementChild;
+			if (child === null) return;
+			if (immediate === true) { layer.textContent = ""; return; }
+			child.style.pointerEvents = "none";
+			child.classList.add("dsha_leave");
+			window.setTimeout(() => { if (child.parentNode === layer) child.remove(); }, 110);
 		}
 
 		/**
@@ -208,33 +235,34 @@ window.__ModuleLoader__.load({
 		}
 
 		/**
-		 * Place one floating element against a range, keeping it inside the viewport.
+		 * Place one floating element against a range, kept inside the viewport.
 		 * @param element - the element to place.
-		 * @param rect - the range's rectangle.
+		 * @param rect - the range's rectangle, in viewport coordinates.
 		 */
 		function place(element, rect) {
 			layerOf().appendChild(element);
-			const width = 320;
-			const left = Math.max(8, Math.min(rect.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - width - 12));
-			element.style.left = `${String(left)}px`;
-			element.style.top = `${String(rect.bottom + window.scrollY + 8)}px`;
+			const width = element.offsetWidth > 0 ? element.offsetWidth : 340;
+			const maxLeft = Math.max(8, document.documentElement.clientWidth - width - 12);
+			element.style.left = `${String(Math.max(8, Math.min(rect.left, maxLeft)))}px`;
+			element.style.top = `${String(rect.bottom + 8)}px`;
 		}
 
 		/**
 		 * Offer the annotate button for the current selection.
-		 * @param ctx - the client plugin context.
 		 * @param sessionId - the Session on screen, when one is.
+		 * @param t - this namespace's translate function.
 		 */
-		function offer(ctx, sessionId, t) {
+		function offer(sessionId, t) {
 			const read = readSelection(window.getSelection());
 			if (read === undefined || sessionId === undefined) { dismiss(); return; }
 			const rect = read.range?.getBoundingClientRect();
 			if (rect === undefined || (rect.width === 0 && rect.height === 0)) { dismiss(); return; }
-			dismiss();
+			dismiss(true);
 			const button = document.createElement("button");
 			button.type = "button";
-			button.className = "dsha_button";
+			button.className = "dsha_button dsha_in";
 			button.textContent = t("annotate");
+			button.style.cssText = `${SURFACE};height:28px;padding:0 12px;border-radius:999px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center`;
 			button.addEventListener("mousedown", (event) => {
 				// Opening the editor on mousedown, not click: a click clears the selection
 				// first, and that selection is the quote the annotation carries.
@@ -252,33 +280,69 @@ window.__ModuleLoader__.load({
 		 * @param t - this namespace's translate function.
 		 */
 		function editor(sessionId, read, t) {
-			dismiss();
+			dismiss(true);
 			const rect = read.range?.getBoundingClientRect();
 			const card = document.createElement("div");
-			card.className = "dsha_card";
+			card.className = "dsha_card dsha_in";
+			card.style.cssText = `${SURFACE};width:340px;max-width:calc(100vw - 24px);display:flex;flex-direction:column;gap:10px;padding:14px`;
+			// Presses inside the card belong to the card: the document handler must not
+			// rebuild the layer from under an open editor.
+			card.addEventListener("mousedown", (event) => { event.stopPropagation(); });
+
+			const title = document.createElement("div");
+			title.textContent = t("title");
+			title.style.cssText = "font-size:12px;font-weight:600;opacity:.65";
+
 			const quote = document.createElement("div");
 			quote.className = "dsha_quote";
 			quote.textContent = read.text;
+			quote.style.cssText = "max-height:88px;overflow:auto;padding:8px 10px;border-radius:10px;font-size:12px;line-height:1.6;"
+				+ "opacity:.85;white-space:pre-wrap;background:color-mix(in srgb,CanvasText 8%,transparent)";
+
 			const input = document.createElement("textarea");
 			input.className = "dsha_input";
 			input.placeholder = t("placeholder");
+			input.style.cssText = "width:100%;box-sizing:border-box;min-height:72px;max-height:40vh;resize:vertical;padding:9px 10px;"
+				+ "border-radius:10px;font:inherit;font-size:13px;line-height:1.5;background:transparent;color:inherit;"
+				+ "border:1px solid color-mix(in srgb,CanvasText 22%,transparent)";
+
 			const row = document.createElement("div");
-			row.className = "dsha_row";
-			const cancel = document.createElement("button");
-			cancel.type = "button";
-			cancel.textContent = t("cancel");
-			cancel.addEventListener("click", () => { dismiss(); });
-			const save = document.createElement("button");
-			save.type = "button";
-			save.textContent = t("save");
-			save.addEventListener("click", () => {
+			row.style.cssText = "display:flex;align-items:center;gap:8px";
+
+			const hint = document.createElement("div");
+			hint.textContent = t("hint");
+			hint.style.cssText = "flex:1;font-size:11px;opacity:.55";
+
+			const action = (text, primary) => {
+				const button = document.createElement("button");
+				button.type = "button";
+				button.textContent = text;
+				button.style.cssText = "height:28px;padding:0 12px;border-radius:8px;font-size:12px;cursor:pointer;font:inherit;"
+					+ (primary
+						? "background:CanvasText;color:Canvas;border:1px solid transparent;font-weight:600"
+						: "background:transparent;color:inherit;border:1px solid color-mix(in srgb,CanvasText 22%,transparent)");
+				return button;
+			};
+			const commit = () => {
 				const comment = collapse(input.value);
-				if (comment === "") return;
+				if (comment === "") { input.focus(); return; }
 				add(sessionId, read.text, comment, read.range);
 				dismiss();
+			};
+			const cancel = action(t("cancel"), false);
+			cancel.addEventListener("click", () => { dismiss(); });
+			const save = action(t("save"), true);
+			save.addEventListener("click", commit);
+			input.addEventListener("keydown", (event) => {
+				// Enter saves and Shift+Enter breaks the line: the card is small, and leaving on
+				// a plain Enter is what a one-line comment invites.
+				if (event.key !== "Enter" || event.shiftKey === true) return;
+				event.preventDefault();
+				commit();
 			});
-			row.append(cancel, save);
-			card.append(quote, input, row);
+
+			row.append(hint, cancel, save);
+			card.append(title, quote, input, row);
 			editing = sessionId;
 			if (rect !== undefined) place(card, rect);
 			input.focus();
@@ -357,7 +421,7 @@ window.__ModuleLoader__.load({
 					// A press inside this plugin's own UI must not rebuild the layer: it would
 					// unmount the editor the same press is opening.
 					if (event?.target?.closest?.("[data-dsh-annotate]")) return;
-					offer(ctx, onScreen(), t);
+					offer(onScreen(), t);
 				};
 				const onKey = (event) => { if (event.key === "Escape") dismiss() };
 				const onScroll = () => { if (editing === null) dismiss() };
