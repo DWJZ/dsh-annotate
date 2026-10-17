@@ -290,12 +290,46 @@ window.__ModuleLoader__.load({
 		 * @param element - the element to place.
 		 * @param rect - the range's rectangle, in viewport coordinates.
 		 */
+		/**
+		 * Where one floating element goes, given the selection and the viewport.
+		 *
+		 * Below the selection when it fits, above it when it does not, and clamped to the
+		 * viewport otherwise — a card that runs off the bottom is unreadable exactly when it
+		 * has the most to say.
+		 * @param facts - selection rectangle, element size, and viewport size.
+		 * @returns the top-left corner in viewport coordinates.
+		 */
+		function placeMath({ rect, size, viewport, margin = 8 }) {
+			const left = Math.max(margin, Math.min(rect.left, Math.max(margin, viewport.width - size.width - margin)));
+			const below = rect.bottom + margin;
+			const above = rect.top - size.height - margin;
+			const fitsBelow = below + size.height <= viewport.height - margin;
+			const fitsAbove = above >= margin;
+			let top;
+			if (fitsBelow) top = below;
+			else if (fitsAbove) top = above;
+			else top = Math.max(margin, Math.min(below, viewport.height - size.height - margin));
+			return { left: Math.round(left), top: Math.round(top) };
+		}
+
+		/**
+		 * Place one floating element against a range.
+		 * @param element - the element to place, already sized by the browser.
+		 * @param rect - the range's rectangle, in viewport coordinates.
+		 */
 		function place(element, rect) {
 			layerOf().appendChild(element);
-			const width = element.offsetWidth > 0 ? element.offsetWidth : 340;
-			const maxLeft = Math.max(8, document.documentElement.clientWidth - width - 12);
-			element.style.left = `${String(Math.max(8, Math.min(rect.left, maxLeft)))}px`;
-			element.style.top = `${String(rect.bottom + 8)}px`;
+			const size = {
+				width: element.offsetWidth > 0 ? element.offsetWidth : 340,
+				height: element.offsetHeight > 0 ? element.offsetHeight : 140,
+			};
+			const viewport = {
+				width: document.documentElement.clientWidth,
+				height: document.documentElement.clientHeight,
+			};
+			const spot = placeMath({ rect, size, viewport });
+			element.style.left = `${String(spot.left)}px`;
+			element.style.top = `${String(spot.top)}px`;
 		}
 
 		/**
@@ -335,7 +369,7 @@ window.__ModuleLoader__.load({
 			const rect = read.range?.getBoundingClientRect();
 			const card = document.createElement("div");
 			card.className = "dsha_card dsha_in";
-			card.style.cssText = `${SURFACE};width:340px;max-width:calc(100vw - 24px);display:flex;flex-direction:column;gap:10px;padding:14px`;
+			card.style.cssText = `${SURFACE};width:340px;max-width:calc(100vw - 24px);max-height:calc(100vh - 16px);overflow:auto;display:flex;flex-direction:column;gap:10px;padding:14px`;
 			// Presses inside the card belong to the card: the document handler must not
 			// rebuild the layer from under an open editor.
 			card.addEventListener("mousedown", (event) => { event.stopPropagation(); });
@@ -526,6 +560,7 @@ window.__ModuleLoader__.load({
 		exports.inject = inject;
 		// Pure helpers, exported so the suite can pin the message it composes.
 		exports.composeBatch = composeBatch;
+		exports.placeMath = placeMath;
 
 		exports.collapse = collapse;
 		exports.pending = pending;

@@ -114,5 +114,18 @@ const xMarks = buttonsIn(registration.component({ t, sessionId: 'a' })).filter(b
 xMarks[0].props.onClick()
 check('only the chosen annotation left', exports.pending.get('a').length === 1 && exports.pending.get('a')[0].quote === 'two', JSON.stringify(exports.pending.get('a')))
 
+
+console.log('the floating card stays on screen')
+const size = { width: 340, height: 200 }
+const viewport = { width: 1000, height: 800 }
+check('below the selection when it fits',
+  JSON.stringify(exports.placeMath({ rect: { left: 100, top: 100, bottom: 120 }, size, viewport })) === JSON.stringify({ left: 100, top: 128 }))
+check('above it when the bottom is out of room',
+  JSON.stringify(exports.placeMath({ rect: { left: 100, top: 700, bottom: 720 }, size, viewport })) === JSON.stringify({ left: 100, top: 492 }))
+check('clamped inward when neither side fits',
+  exports.placeMath({ rect: { left: 100, top: 300, bottom: 320 }, size: { width: 340, height: 790 }, viewport }).top === 8)
+check('and clamped away from the right edge',
+  exports.placeMath({ rect: { left: 990, top: 0, bottom: 20 }, size, viewport }).left === 1000 - 340 - 8)
+
 console.log(failures === 0 ? "\nPASS" : `\n${String(failures)} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)
