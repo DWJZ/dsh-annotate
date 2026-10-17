@@ -65,43 +65,57 @@ check('every comment follows its quote', composed.includes('commentLabel：这�
 check('nothing waiting composes nothing', exports.composeBatch([], t) === '')
 check('a multi-line selection stays on one line', exports.composeBatch([{ quote: 'a\nb', comment: 'c\nd' }], t).includes('「a b」') && exports.composeBatch([{ quote: 'a\nb', comment: 'c\nd' }], t).includes('commentLabel：c d'))
 
-console.log('the annotations go into the composer draft')
-let draft = ''
-const drafts = []
+/** Every button in a rendered tree, in document order. */
+const buttonsIn = (node, found = []) => {
+  if (node === null || typeof node !== 'object') return found
+  if (node.type === 'button') found.push(node)
+  for (const child of node.children ?? []) buttonsIn(child, found)
+  return found
+}
+
+console.log('the chip row sends the batch through the conversation face')
+const sent = []
+const registration = {}
 const ctx = {
   effect: (fn) => { fn(); return () => {} },
   locale: { register: () => {}, bind: () => t },
   sessions: {
-    list: { getSnapshot: () => ({ ids: ['a'], byId: { a: { id: 'a', retainedBy: { mainView: 1 } } } }), subscribe: () => () => {} },
-    scope: () => ({}),
-  },
-  uiConversation: {
-    input: {
-      for: () => ({
-        state: { getSnapshot: () => ({ draft }) },
-        setDraft: (text) => { draft = text; drafts.push(text) },
-        submit: () => {},
-      }),
+    list: {
+      getSnapshot: () => ({ ids: ['a'], byId: { a: { id: 'a', retainedBy: { mainView: 1 } } } }),
+      subscribe: () => () => {},
     },
+    scope: () => ({
+      get: (name) => (name === 'uiConversation'
+        ? { send: (text) => { sent.push(text); return Promise.resolve() } }
+        : undefined),
+    }),
+  },
+  uiConversation: { send: (text) => { sent.push(text); return Promise.resolve() } },
+  slots: {
+    inject: (name, factory) => { factory({}) },
+    register: (options, component) => { registration.options = options; registration.component = component; return () => {} },
   },
 }
 exports.apply(ctx)
+check('it registers into the composer dock', registration.options.name === 'conversation.input.dock')
 exports.pending.set('a', [{ quote: 'q', comment: 'c' }])
-exports.syncDraft(ctx, t, 'a')
-check('the batch lands in the draft', drafts.length === 1 && drafts[0].includes('quoteLabel：「q」'), JSON.stringify(drafts))
-check('and the person sees it there', draft.includes('commentLabel：c'), JSON.stringify(draft))
+const element = registration.component({ t, sessionId: 'a' })
+check('the row renders while something waits', element !== null, String(element))
+const buttons = buttonsIn(element)
+check('one chip per annotation plus the send chip', buttons.length === 2, JSON.stringify(buttons.map(button => button.children?.[0])))
+const sendChip = buttons.find(button => String(button.children?.[0]).startsWith('sendAllCount'))
+check('the send chip carries the count', sendChip !== undefined && sendChip.children[0] === 'sendAllCount:1')
+sendChip.props.onClick()
+await new Promise((resolve) => { setTimeout(resolve, 20) })
+check('the batch went out through the conversation send', sent.length === 1 && sent[0].includes('quoteLabel：「q」'), JSON.stringify(sent))
+check('and the chips cleared', exports.pending.get('a').length === 0)
+check('an empty list renders nothing', registration.component({ t, sessionId: 'a' }) === null)
 
-console.log('their own words survive a resync')
-draft = `我先说一句\n\n${draft}`
-exports.pending.set('a', [{ quote: 'q', comment: 'c' }, { quote: 'q2', comment: 'c2' }])
-exports.syncDraft(ctx, t, 'a')
-check('the base draft is kept once', draft.startsWith('我先说一句') && draft.split('我先说一句').length === 2, JSON.stringify(draft))
-check('and the new annotation is in', draft.includes('「q2」'), JSON.stringify(draft))
-
-console.log('removing every annotation takes the block back out')
-exports.pending.set('a', [])
-exports.syncDraft(ctx, t, 'a')
-check('only their own words remain', draft === '我先说一句', JSON.stringify(draft))
+console.log('removing one chip keeps the rest')
+exports.pending.set('a', [{ quote: 'one', comment: 'c1' }, { quote: 'two', comment: 'c2' }])
+const xMarks = buttonsIn(registration.component({ t, sessionId: 'a' })).filter(button => button.children?.[0] === '✕')
+xMarks[0].props.onClick()
+check('only the chosen annotation left', exports.pending.get('a').length === 1 && exports.pending.get('a')[0].quote === 'two', JSON.stringify(exports.pending.get('a')))
 
 console.log(failures === 0 ? "\nPASS" : `\n${String(failures)} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)

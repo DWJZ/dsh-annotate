@@ -27,6 +27,15 @@ window.__ModuleLoader__.load({
 			const tag = document.createElement("style");
 			tag.setAttribute("data-plugin-css", CSS_ID);
 			tag.textContent = [
+				".dsha_chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 0 4px}",
+				".dsha_chip{display:inline-flex;align-items:center;gap:6px;max-width:340px;height:26px;padding:0 8px;border-radius:999px;border:1px solid color-mix(in srgb,CanvasText 20%,transparent);background:color-mix(in srgb,CanvasText 8%,transparent);color:CanvasText;font:inherit;font-size:12px;line-height:1}",
+				".dsha_chip_quote,.dsha_chip_comment{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+				".dsha_chip_quote{max-width:150px;opacity:.65}",
+				".dsha_chip_comment{max-width:130px;font-weight:500}",
+				".dsha_chip_x{border:0;background:transparent;color:inherit;opacity:.55;cursor:pointer;font:inherit;font-size:11px;padding:0}",
+				".dsha_chip_x:hover{opacity:1}",
+				".dsha_chip_send{cursor:pointer;border-color:transparent;background:CanvasText;color:Canvas;font-weight:600}",
+				".dsha_chip_note{font-size:11px;opacity:.6}",
 				".dsha_in{animation:dsha_in .12s ease-out}",
 				".dsha_leave{animation:dsha_out .1s ease-in forwards}",
 				"@keyframes dsha_in{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}",
@@ -92,8 +101,6 @@ window.__ModuleLoader__.load({
 		 * this closure: the injection is where a session-scoped ctx exists.
 		 */
 		let sendPending = null;
-		/** Set by apply: puts one Session waiting annotations into its draft. */
-		let syncPending = null;
 		/**
 		 * Why the last send failed, per Session, shown in the chip row.
 		 *
@@ -148,15 +155,6 @@ window.__ModuleLoader__.load({
 				painted.push(range);
 				ranges.set(sessionId, painted);
 				paint(sessionId, painted);
-			}
-			// The list is what the person wrote; the draft is only where it is delivered. A failed
-			// delivery must not take the annotation with it, and it must say why.
-			try {
-				const reason = syncPending?.(sessionId) ?? "";
-				if (reason === "") problems.delete(sessionId);
-				else problems.set(sessionId, reason);
-			} catch (failure) {
-				problems.set(sessionId, String(failure?.message ?? failure));
 			}
 			changed();
 		}
@@ -395,49 +393,60 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 
-		//#region draft composition
-		/** The exact block this plugin put into each draft last time, so it can be replaced. */
-		const lastBlock = new Map();
-
+//#region composer chips
 		/**
-		 * Put the waiting annotations into the composer's draft.
-		 *
-		 * The draft *is* the UI: what the person sees in the box is exactly what Enter sends,
-		 * so nothing has to intercept the keyboard — the conversation's own submit carries it.
-		 * The person's own typing is preserved by replacing only the block this plugin added.
-		 * @param ctx - the client plugin context.
-		 * @param t - this namespace's translate function.
-		 * @param sessionId - the Session whose draft to update.
+		 * The chips at the top of the composer: one per waiting annotation, plus the action
+		 * that sends them all. Native attachments live in the same strip, so a person reads
+		 * both the same way — something attached to what they are about to send.
+		 * @param props - the slot's props, plus the Session these chips belong to.
+		 * @returns the chip row, or null while nothing waits.
 		 */
-		function syncDraft(ctx, t, sessionId) {
-			const scope = ctx.sessions.scope(sessionId);
-			// A missing scope is not an error the caller can fix, but it is the reason nothing
-			// reached the composer, so say so instead of returning silently.
-			if (scope === undefined) return "scope-missing";
-			// `ctx.get` reads the service store through this scope: the property proxy would throw
-			// "cannot get property uiConversation without inject" on a ctx that did not declare it,
-			// and the session-scoped face is where the input resolver lives.
-			const conversation = scope.get?.("uiConversation") ?? ctx.uiConversation;
-			const resolver = conversation?.input
-				?? scope.get?.("uiSession")?.input
-				?? ctx.uiSession?.input;
-			if (resolver === undefined || typeof resolver.for !== "function") return "input-missing";
-			const input = resolver.for(scope);
-			const block = composeBatch(itemsOf(sessionId), t);
-			const current = String(input.state?.getSnapshot?.().draft ?? "");
-			const previous = lastBlock.get(sessionId) ?? "";
-			const base = previous !== "" && current.endsWith(previous)
-				? current.slice(0, current.length - previous.length).trimEnd()
-				: current.trimEnd();
-			const next = block === "" ? base : (base === "" ? block : `${base}\n\n${block}`);
-			if (next === current) return;
-			lastBlock.set(sessionId, block);
-			input.setDraft(next);
-			return "";
+		function AnnotateChips({ t, sessionId }) {
+			const [, redraw] = React.useState(0);
+			React.useEffect(() => {
+				const watcher = () => { redraw((value) => value + 1) };
+				watchers.add(watcher);
+				return () => { watchers.delete(watcher) };
+			}, []);
+			const items = itemsOf(sessionId);
+			const problem = problems.get(sessionId) ?? "";
+			if (items.length === 0) return null;
+
+			const remove = (position) => {
+				const list = itemsOf(sessionId).slice();
+				list.splice(position, 1);
+				pending.set(sessionId, list);
+				changed();
+			};
+			const sendAll = () => {
+				const text = composeBatch(itemsOf(sessionId), t);
+				if (!sendable(text)) return;
+				void flush(sessionId, text);
+			};
+
+			return React.createElement("div", { className: "dsha_chips" },
+				...items.map((item, position) => React.createElement("span", {
+					className: "dsha_chip",
+					key: `${String(position)}-${item.quote.slice(0, 12)}`,
+					// The chip is one line by design; the whole annotation is on hover.
+					title: `「${item.quote}」\n${item.comment}`,
+				},
+				React.createElement("span", { className: "dsha_chip_quote" }, `「${item.quote}」`),
+				React.createElement("span", { className: "dsha_chip_comment" }, item.comment),
+				React.createElement("button", {
+					type: "button",
+					className: "dsha_chip_x",
+					"aria-label": t("remove"),
+					title: t("remove"),
+					onClick: (event) => { event?.stopPropagation?.(); remove(position) },
+				}, "✕"))),
+				React.createElement("button", { type: "button", className: "dsha_chip dsha_chip_send", onClick: sendAll },
+					t("sendAllCount", { count: items.length })),
+				problem === "" ? null : React.createElement("span", { className: "dsha_chip_note" }, problem === "no-send" ? t("noSend") : problem));
 		}
 		//#endregion
 
-		//#region plugin
+				//#region plugin
 		const inject = ["slots", "sessions", "locale", "uiConversation"];
 
 		/**
@@ -474,37 +483,32 @@ window.__ModuleLoader__.load({
 				};
 			}, "dsh-annotate: selection affordance");
 
-			// The annotations live in the composer draft, so the conversation own submit
-			// carries them and nothing here touches the keyboard.
-			syncPending = (sessionId) => syncDraft(ctx, t, sessionId);
+			// The send uses the public conversation face: `IConversation.send` is contract, and the
+			// session scope is what makes it target this Session's own turn.
+			sendPending = (sessionId, text) => {
+				const scope = ctx.sessions.scope(sessionId);
+				if (scope === undefined) throw new Error(t("noSend"));
+				const conversation = scope.get?.("uiConversation") ?? ctx.uiConversation;
+				if (conversation === undefined || typeof conversation.send !== "function") throw new Error(t("noSend"));
+				return conversation.send(text);
+			};
 
-			// An annotation leaves the list when its block leaves the draft - submitted, or
-			// edited away. Watching the draft keeps that simple.
-			ctx.effect(() => {
-				const timer = window.setInterval?.(() => {
-					for (const sessionId of [...pending.keys()]) {
-						if (itemsOf(sessionId).length === 0) continue;
-						const scope = ctx.sessions.scope(sessionId);
-						const draft = scope === undefined
-							? ""
-							: String(ctx.uiConversation.input.for(scope).state?.getSnapshot?.().draft ?? "");
-						const block = lastBlock.get(sessionId) ?? "";
-						if (block === "" || draft.includes(block)) continue;
-						pending.set(sessionId, []);
-						lastBlock.delete(sessionId);
-						problems.delete(sessionId);
-						changed();
-					}
-				}, 700);
-				return () => { if (timer !== undefined) window.clearInterval?.(timer) };
-			}, "dsh-annotate: draft watch");
+			ctx.slots.inject("conversation.input.dock", () => {
+				const dispose = ctx.slots.register({
+					name: "conversation.input.dock",
+					id: "annotate",
+					order: 5,
+					locale: NS,
+				}, (props) => AnnotateChips({ ...props, sessionId: onScreen() ?? "" }));
+				return () => { dispose() };
+			});
 		}
 
 		exports.apply = apply;
 		exports.inject = inject;
 		// Pure helpers, exported so the suite can pin the message it composes.
 		exports.composeBatch = composeBatch;
-		exports.syncDraft = syncDraft;
+
 		exports.collapse = collapse;
 		exports.pending = pending;
 		//#endregion

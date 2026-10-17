@@ -13,8 +13,8 @@ Select a passage of an answer, write what you think about it; annotate as many p
 - Select text in an answer and a small **Annotate** button appears next to the selection; open it and write the comment for that passage. **Enter saves, Shift+Enter breaks the line**, and the button and card each animate in and out briefly.
 - Annotate as often as you like, each one independent: its own quote, its own comment.
 - **Enter in the composer sends the waiting annotations with it**: the draft first, the annotation batch after it, as one message — and with an empty box, the annotations go on their own. Shift+Enter still breaks the line and sends nothing.
-- Annotations are written **into the composer draft**: what you see in the box is exactly what will be sent, Enter is the conversation's own submit, and the plugin intercepts no keyboard event. Annotating again updates that block; words you typed yourself stay as they are.
-- The annotations form one numbered block in the draft:
+- The annotations wait as **chips in a row above the composer**, each showing its quote and comment and removable on its own; the last chip, **Send all (n)**, composes them into one numbered message in the current Session.
+- **Send all** composes them into one numbered message:
 
   ```
   Please address each of my annotations on your answer above:
@@ -46,7 +46,7 @@ The Desktop application's `desktop` profile is added through its own plugin mana
 
 1. Select a passage of an answer.
 2. Press **Annotate**, write the comment, press **Save**. Repeat 1–2.
-3. Press Enter in the composer (with or without words of your own).
+3. Press **Send all (n)** in the chip row.
 
 ## Known limitations
 
