@@ -1,7 +1,7 @@
 {
   "name": "dsh-annotate",
   "version": "0.1.0",
-  "description": "DeepSeek Harness 的回答标注插件：选中助手回答里的文字写下备注，攒够了一次性发给 agent。 / Annotate a DeepSeek Harness answer: select text, leave a comment per selection, and send the whole set as one message.",
+  "description": "DeepSeek Harness \u7684\u56de\u7b54\u6807\u6ce8\u63d2\u4ef6\uff1a\u9009\u4e2d\u52a9\u624b\u56de\u7b54\u91cc\u7684\u6587\u5b57\u5199\u4e0b\u5907\u6ce8\uff0c\u6512\u591f\u4e86\u4e00\u6b21\u6027\u53d1\u7ed9 agent\u3002 / Annotate a DeepSeek Harness answer: select text, leave a comment per selection, and send the whole set as one message.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -40,5 +40,16 @@
   },
   "scripts": {
     "test": "node test/annotate.spec.mjs"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "annotation",
+    "annotate",
+    "notes"
+  ],
+  "bugs": {
+    "url": "https://github.com/DWJZ/dsh-annotate/issues"
   }
 }
