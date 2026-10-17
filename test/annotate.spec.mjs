@@ -72,7 +72,11 @@ let registration = null
 const ctx = {
   effect: (fn) => { fn(); return () => {} },
   locale: { register: () => {}, bind: () => t },
-  sessions: { list: { getSnapshot: () => ({ ids: ['a'], byId: { a: { id: 'a', retainedBy: { mainView: 1 } } } }), subscribe: (fn) => { listListeners.push(fn); return () => {} } } },
+  sessions: {
+    list: { getSnapshot: () => ({ ids: ['a'], byId: { a: { id: 'a', retainedBy: { mainView: 1 } } } }), subscribe: (fn) => { listListeners.push(fn); return () => {} } },
+    // The send goes through the borrowed session scope, not the plugin's own context.
+    scope: () => ({ uiConversation: { send: (text) => { sent.push(text); return Promise.resolve() } } }),
+  },
   slots: { inject: (name, factory) => { factory({ uiConversation: { send: (text) => { sent.push(text); return Promise.resolve() } } }) }, register: (options, component) => { registration = { options, component }; return () => {} } },
   uiConversation: { send: () => Promise.resolve() },
 }

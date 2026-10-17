@@ -101,6 +101,13 @@ window.__ModuleLoader__.load({
 		 * this closure: the injection is where a session-scoped ctx exists.
 		 */
 		let sendPending = null;
+		/**
+		 * Why the last send failed, per Session, shown in the chip row.
+		 *
+		 * A failed send must be visible: the plugin takes over the composer's Enter, so a
+		 * silent rejection would look exactly like "nothing happened".
+		 */
+		const problems = new Map();
 
 		const itemsOf = (sessionId) => pending.get(sessionId) ?? [];
 
@@ -116,9 +123,18 @@ window.__ModuleLoader__.load({
 		 * @returns the send, or undefined when nothing could be sent.
 		 */
 		function flush(sessionId, text) {
-			if (typeof sendPending !== "function" || !sendable(text)) return undefined;
-			return Promise.resolve(sendPending(text)).then(() => {
+			if (!sendable(text)) return undefined;
+			if (typeof sendPending !== "function") {
+				problems.set(sessionId, "no-send");
+				changed();
+				return undefined;
+			}
+			return Promise.resolve(sendPending(sessionId, text)).then(() => {
 				pending.set(sessionId, []);
+				problems.delete(sessionId);
+				changed();
+			}).catch((failure) => {
+				problems.set(sessionId, String(failure?.message ?? failure));
 				changed();
 			});
 		}
@@ -202,6 +218,8 @@ window.__ModuleLoader__.load({
 		let layer = null;
 		/** The Session the open editor belongs to. */
 		let editing = null;
+		/** The mounted chip row, so a resize can line it up again. */
+		let chipsRow = null;
 
 		/**
 		 * The layer that holds this plugin's floating UI.
@@ -409,10 +427,16 @@ window.__ModuleLoader__.load({
 		 * @param props - the slot's props, plus the Session these chips belong to and the send they may use.
 		 * @returns the chip row, or null while nothing waits.
 		 */
-		function AnnotateChips({ t, sessionId, send }) {
+		function AnnotateChips({ t, sessionId }) {
 			const row = typeof React.useRef === "function" ? React.useRef(null) : { current: null };
-			if (typeof React.useLayoutEffect === "function") {
-				React.useLayoutEffect(() => { alignToComposer(row.current) });
+			if (typeof React.useEffect === "function") {
+				React.useEffect(() => {
+					// After paint: a layout effect runs before the composer has a box to measure.
+					const later = () => { chipsRow = row.current; alignToComposer(chipsRow) };
+					if (typeof window.requestAnimationFrame !== "function") { later(); return undefined }
+					const frame = window.requestAnimationFrame(later);
+					return () => { window.cancelAnimationFrame?.(frame) };
+				});
 			}
 			const [, redraw] = React.useState(0);
 			React.useEffect(() => {
@@ -421,7 +445,7 @@ window.__ModuleLoader__.load({
 				return () => { watchers.delete(watcher) };
 			}, []);
 			const items = itemsOf(sessionId);
-			const [message, setMessage] = React.useState("");
+			const problem = problems.get(sessionId) ?? "";
 			if (items.length === 0) return null;
 
 			const remove = (position) => {
@@ -433,10 +457,7 @@ window.__ModuleLoader__.load({
 			const sendAll = () => {
 				const text = composeBatch(itemsOf(sessionId), t);
 				if (!sendable(text)) return;
-				if (typeof send !== "function") { setMessage(t("noSend")); return; }
-				const settled = flush(sessionId, text);
-				if (settled === undefined) { setMessage(t("noSend")); return; }
-				settled.catch((failure) => { setMessage(String(failure?.message ?? failure)) });
+				void flush(sessionId, text);
 			};
 
 			return React.createElement("div", { className: "dsha_chips", ref: row },
@@ -457,7 +478,7 @@ window.__ModuleLoader__.load({
 				}, "✕"))),
 				React.createElement("button", { type: "button", className: "dsha_chip dsha_chip_send", onClick: sendAll },
 					t("sendAllCount", { count: items.length })),
-				message === "" ? null : React.createElement("span", { className: "dsha_chip_note" }, message));
+				problem === "" ? null : React.createElement("span", { className: "dsha_chip_note" }, problem === "no-send" ? t("noSend") : problem));
 		}
 		//#endregion
 
@@ -520,36 +541,41 @@ window.__ModuleLoader__.load({
 					target.dispatchEvent(new Event("input", { bubbles: true }));
 				};
 				const onScroll = () => { if (editing === null) dismiss() };
+				const onResize = () => { alignToComposer(chipsRow) };
 				document.addEventListener("mouseup", onUp);
 				document.addEventListener("keydown", onKey);
 				document.addEventListener("keydown", onComposerEnter, true);
 				window.addEventListener("scroll", onScroll, true);
+				window.addEventListener("resize", onResize);
 				return () => {
 					document.removeEventListener("mouseup", onUp);
 					document.removeEventListener("keydown", onKey);
 					document.removeEventListener("keydown", onComposerEnter, true);
 					window.removeEventListener("scroll", onScroll, true);
+					window.removeEventListener("resize", onResize);
 					if (layer !== null) { layer.remove(); layer = null }
 				};
 			}, "dsh-annotate: selection affordance");
 
 			// The strip at the top of the composer: the same one native attachments draw in,
 			// which is why these read as "attached to what I am about to send".
-			ctx.slots.inject("conversation.input.dock", (barCtx) => {
-				// The composer's Enter handler runs outside this injection, so it borrows the
-				// session-scoped send captured here.
-				sendPending = (text) => barCtx.uiConversation.send(text);
+			// The send needs a session-scoped context: the slots injection hands out the plugin's
+			// own scope, where `uiConversation` has no session to send into. The sessions service
+			// borrows the retained one, which is the same context the shell's own commands run in.
+			sendPending = (sessionId, text) => {
+				const scope = ctx.sessions.scope(sessionId);
+				if (scope === undefined) throw new Error(t("noSend"));
+				return scope.uiConversation.send(text);
+			};
+
+			ctx.slots.inject("conversation.input.dock", () => {
 				const dispose = ctx.slots.register({
 					name: "conversation.input.dock",
 					id: "annotate",
 					order: 5,
 					locale: NS,
-				}, (props) => AnnotateChips({
-					...props,
-					sessionId: onScreen() ?? "",
-					send: (text) => barCtx.uiConversation.send(text),
-				}));
-				return () => { dispose(); sendPending = null };
+				}, (props) => AnnotateChips({ ...props, sessionId: onScreen() ?? "" }));
+				return () => { dispose() };
 			});
 		}
 
