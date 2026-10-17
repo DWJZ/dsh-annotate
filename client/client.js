@@ -149,7 +149,15 @@ window.__ModuleLoader__.load({
 				ranges.set(sessionId, painted);
 				paint(sessionId, painted);
 			}
-			syncPending?.(sessionId);
+			// The list is what the person wrote; the draft is only where it is delivered. A failed
+			// delivery must not take the annotation with it, and it must say why.
+			try {
+				const reason = syncPending?.(sessionId) ?? "";
+				if (reason === "") problems.delete(sessionId);
+				else problems.set(sessionId, reason);
+			} catch (failure) {
+				problems.set(sessionId, String(failure?.message ?? failure));
+			}
 			changed();
 		}
 		//#endregion
@@ -362,7 +370,10 @@ window.__ModuleLoader__.load({
 				const comment = collapse(input.value);
 				if (comment === "") { input.focus(); return; }
 				add(sessionId, read.text, comment, read.range);
-				dismiss();
+				const problem = problems.get(sessionId) ?? "";
+				if (problem === "") { dismiss(); return; }
+				hint.textContent = problem === "no-send" ? t("noSend") : problem;
+				hint.style.opacity = "1";
 			};
 			const cancel = action(t("cancel"), false);
 			cancel.addEventListener("click", () => { dismiss(); });
@@ -400,7 +411,9 @@ window.__ModuleLoader__.load({
 		 */
 		function syncDraft(ctx, t, sessionId) {
 			const scope = ctx.sessions.scope(sessionId);
-			if (scope === undefined) return;
+			// A missing scope is not an error the caller can fix, but it is the reason nothing
+			// reached the composer, so say so instead of returning silently.
+			if (scope === undefined) return "scope-missing";
 			const input = ctx.uiConversation.input.for(scope);
 			const block = composeBatch(itemsOf(sessionId), t);
 			const current = String(input.state?.getSnapshot?.().draft ?? "");
@@ -412,6 +425,7 @@ window.__ModuleLoader__.load({
 			if (next === current) return;
 			lastBlock.set(sessionId, block);
 			input.setDraft(next);
+			return "";
 		}
 		//#endregion
 
@@ -454,7 +468,7 @@ window.__ModuleLoader__.load({
 
 			// The annotations live in the composer draft, so the conversation own submit
 			// carries them and nothing here touches the keyboard.
-			syncPending = (sessionId) => { syncDraft(ctx, t, sessionId) };
+			syncPending = (sessionId) => syncDraft(ctx, t, sessionId);
 
 			// An annotation leaves the list when its block leaves the draft - submitted, or
 			// edited away. Watching the draft keeps that simple.
