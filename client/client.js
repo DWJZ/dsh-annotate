@@ -94,12 +94,33 @@ window.__ModuleLoader__.load({
 		const ranges = new Map();
 		/** Dock subscribers, so one Session's list redraws when it changes. */
 		const watchers = new Set();
+		/**
+		 * Send into the session-scoped conversation, captured from the slot injection.
+		 *
+		 * The composer's Enter handler runs outside any slot, so the one thing it needs is
+		 * this closure: the injection is where a session-scoped ctx exists.
+		 */
+		let sendPending = null;
 
 		const itemsOf = (sessionId) => pending.get(sessionId) ?? [];
 
 		/** Redraw every dock that is showing a waiting list. */
 		function changed() {
 			for (const watcher of watchers) watcher();
+		}
+
+		/**
+		 * Send one already-composed message and clear what it carried.
+		 * @param sessionId - the Session it belongs to.
+		 * @param text - the message body.
+		 * @returns the send, or undefined when nothing could be sent.
+		 */
+		function flush(sessionId, text) {
+			if (typeof sendPending !== "function" || !sendable(text)) return undefined;
+			return Promise.resolve(sendPending(text)).then(() => {
+				pending.set(sessionId, []);
+				changed();
+			});
 		}
 
 		/**
@@ -382,10 +403,9 @@ window.__ModuleLoader__.load({
 				const text = composeBatch(itemsOf(sessionId), t);
 				if (!sendable(text)) return;
 				if (typeof send !== "function") { setMessage(t("noSend")); return; }
-				Promise.resolve(send(text)).then(() => {
-					pending.set(sessionId, []);
-					changed();
-				}).catch((failure) => { setMessage(String(failure?.message ?? failure)) });
+				const settled = flush(sessionId, text);
+				if (settled === undefined) { setMessage(t("noSend")); return; }
+				settled.catch((failure) => { setMessage(String(failure?.message ?? failure)) });
 			};
 
 			return React.createElement("div", { className: "dsha_chips" },
@@ -435,13 +455,41 @@ window.__ModuleLoader__.load({
 					offer(onScreen(), t);
 				};
 				const onKey = (event) => { if (event.key === "Escape") dismiss() };
+				/**
+				 * Sending from the composer carries the waiting annotations with it.
+				 *
+				 * Captured before the composer sees the key: its own submit would post the draft
+				 * alone and leave the annotations behind. The draft is read from the textarea and
+				 * cleared by hand, because the composer exposes no write API — the plugin can only
+				 * replace text when a Session is first prepared.
+				 */
+				const onComposerEnter = (event) => {
+					if (event.key !== "Enter" || event.shiftKey === true || event.isComposing === true) return;
+					const target = event.target;
+					if (target?.closest?.("[data-dsh-annotate]")) return;
+					if (typeof target?.value !== "string" || target.tagName !== "TEXTAREA") return;
+					const sessionId = onScreen() ?? "";
+					const items = itemsOf(sessionId);
+					if (items.length === 0) return;
+					const batch = composeBatch(items, t);
+					if (!sendable(batch)) return;
+					const draft = target.value.trim();
+					const text = draft === "" ? batch : `${draft}\n\n${batch}`;
+					event.preventDefault();
+					event.stopPropagation();
+					void flush(sessionId, text);
+					target.value = "";
+					target.dispatchEvent(new Event("input", { bubbles: true }));
+				};
 				const onScroll = () => { if (editing === null) dismiss() };
 				document.addEventListener("mouseup", onUp);
 				document.addEventListener("keydown", onKey);
+				document.addEventListener("keydown", onComposerEnter, true);
 				window.addEventListener("scroll", onScroll, true);
 				return () => {
 					document.removeEventListener("mouseup", onUp);
 					document.removeEventListener("keydown", onKey);
+					document.removeEventListener("keydown", onComposerEnter, true);
 					window.removeEventListener("scroll", onScroll, true);
 					if (layer !== null) { layer.remove(); layer = null }
 				};
@@ -450,6 +498,9 @@ window.__ModuleLoader__.load({
 			// The strip at the top of the composer: the same one native attachments draw in,
 			// which is why these read as "attached to what I am about to send".
 			ctx.slots.inject("conversation.input.dock", (barCtx) => {
+				// The composer's Enter handler runs outside this injection, so it borrows the
+				// session-scoped send captured here.
+				sendPending = (text) => barCtx.uiConversation.send(text);
 				const dispose = ctx.slots.register({
 					name: "conversation.input.dock",
 					id: "annotate",
@@ -460,7 +511,7 @@ window.__ModuleLoader__.load({
 					sessionId: onScreen() ?? "",
 					send: (text) => barCtx.uiConversation.send(text),
 				}));
-				return () => { dispose() };
+				return () => { dispose(); sendPending = null };
 			});
 		}
 

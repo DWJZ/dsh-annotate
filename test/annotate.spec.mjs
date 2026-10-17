@@ -20,13 +20,16 @@ const check = (label, condition, detail = '') => {
 }
 
 //#region browser stubs
+/** Document listeners the plugin registers, so the suite can fire real events at it. */
+const documentListeners = new Map()
+
 const windowStub = { __ModuleLoader__: { load: (spec) => { windowStub.spec = spec } }, addEventListener: () => {}, removeEventListener: () => {}, scrollX: 0, scrollY: 0, getSelection: () => null }
 const documentStub = {
   querySelector: () => null,
   createElement: () => ({ setAttribute: () => {}, appendChild: () => {}, addEventListener: () => {}, style: {}, classList: { add: () => {} }, remove: () => {}, focus: () => {}, textContent: '', append: () => {} }),
   head: { appendChild: () => {} },
   body: { appendChild: () => {} },
-  addEventListener: () => {},
+  addEventListener: (name, fn) => { const list = documentListeners.get(name) ?? []; list.push(fn); documentListeners.set(name, list) },
   removeEventListener: () => {},
   documentElement: { clientWidth: 1200 },
 }
@@ -107,5 +110,37 @@ const xMarks = buttonsIn(twoChips).filter(button => button.children?.[0] === '�
 xMarks[0].props.onClick()
 check('only the chosen annotation left', exports.pending.get('a').length === 1 && exports.pending.get('a')[0].quote === 'two', JSON.stringify(exports.pending.get('a')))
 
-console.log(failures === 0 ? '\nPASS' : `\n${String(failures)} FAILURE(S)`)
+
+console.log('Enter in the composer carries the annotations along')
+exports.pending.set('a', [{ quote: 'q', comment: 'c' }])
+let prevented = false
+const composer = {
+  tagName: 'TEXTAREA',
+  value: '  我的问题  ',
+  closest: () => null,
+  dispatchEvent: () => {},
+}
+const enter = {
+  key: 'Enter',
+  shiftKey: false,
+  isComposing: false,
+  target: composer,
+  preventDefault: () => { prevented = true },
+  stopPropagation: () => {},
+}
+const beforeEnter = sent.length
+for (const listener of documentListeners.get('keydown') ?? []) listener(enter)
+await new Promise((resolve) => { setTimeout(resolve, 20) })
+check('the composer submit is taken over', prevented === true)
+check('the draft and the annotations go out as one message',
+  sent.length === beforeEnter + 1 && sent.at(-1).startsWith('我的问题') && sent.at(-1).includes('quoteLabel：「q」'), JSON.stringify(sent.at(-1)))
+check('the composer is cleared', composer.value === '', JSON.stringify(composer.value))
+check('and the chips are gone', exports.pending.get('a').length === 0)
+
+console.log('with nothing annotated, Enter is left alone')
+let untouched = false
+for (const listener of documentListeners.get('keydown') ?? []) listener({ ...enter, preventDefault: () => { untouched = true } })
+check('the plugin does not intercept it', untouched === false)
+
+console.log(failures === 0 ? "\nPASS" : `\n${String(failures)} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)
