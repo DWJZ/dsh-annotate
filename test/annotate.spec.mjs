@@ -160,5 +160,24 @@ check('and the chips cleared', exports.pending.get('a').length === 0)
 check('and the composer was emptied through the native action', written.length === 1 && written[0] === '', JSON.stringify(written))
 
 
+
+console.log('pressing outside takes the button away before the release')
+check('a press inside the plugin UI is ignored', exports.pressAction({ inside: true, open: false, sinceOpened: 9e9 }) === 'ignore')
+check('the press that opened the card does not close it', exports.pressAction({ inside: false, open: true, sinceOpened: 120 }) === 'ignore')
+check('a later press closes the card', exports.pressAction({ inside: false, open: true, sinceOpened: 900 }) === 'close')
+check('with no card, a press drops the button', exports.pressAction({ inside: false, open: false, sinceOpened: 0 }) === 'drop')
+
+console.log('only a new selection earns a button back')
+check('a plain click on a table cell does not', exports.offerAction({ inside: false, open: false, pressed: 'old text', current: 'old text' }) === false)
+check('a drag that changed the selection does', exports.offerAction({ inside: false, open: false, pressed: 'old', current: 'old and more' }) === true)
+check('a click that collapsed the selection does', exports.offerAction({ inside: false, open: false, pressed: 'old', current: '' }) === true)
+check('a press inside the plugin UI never does', exports.offerAction({ inside: true, open: false, pressed: null, current: 'x' }) === false)
+
+console.log('the annotation box leaves a composing Enter to the input method')
+check('a composing key is not a save', exports.composingEnter({ isComposing: true, keyCode: 13, composing: false }) === true)
+check('keyCode 229 is not a save', exports.composingEnter({ isComposing: false, keyCode: 229, composing: false }) === true)
+check('an open composition is not a save', exports.composingEnter({ isComposing: false, keyCode: 13, composing: true }) === true)
+check('a plain Enter is a save', exports.composingEnter({ isComposing: false, keyCode: 13, composing: false }) === false)
+
 console.log(failures === 0 ? "\nPASS" : `\n${String(failures)} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)

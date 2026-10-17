@@ -217,6 +217,40 @@ window.__ModuleLoader__.load({
 
 		//#region highlight
 		/**
+		 * What a press outside this plugin's own UI should do.
+		 * @param facts - whether the press was inside the plugin UI, whether an editor is open, and
+		 * how long ago it opened.
+		 * @returns "ignore" when the press belongs to this plugin, "close" when an open card must
+		 * close, or "drop" when the waiting button must go away.
+		 */
+		function pressAction({ inside, open, sinceOpened }) {
+			if (inside === true) return "ignore";
+			if (open === true) return sinceOpened < 300 ? "ignore" : "close";
+			return "drop";
+		}
+
+		/**
+		 * Whether a release earns a fresh annotation button.
+		 * @param facts - whether the release was inside the plugin UI, whether an editor is open,
+		 * the selection text when the press began, and the selection text now.
+		 * @returns true only when the release left a selection that was not already there.
+		 */
+		function offerAction({ inside, open, pressed, current }) {
+			if (inside === true || open === true) return false;
+			if (pressed !== null && current === pressed) return false;
+			return true;
+		}
+
+		/**
+		 * Whether an Enter press in the annotation box belongs to the input method.
+		 * @param facts - the key event's composition flags.
+		 * @returns true when the key is still composing a character and must not save.
+		 */
+		function composingEnter({ isComposing, keyCode, composing }) {
+			return isComposing === true || keyCode === 229 || composing === true;
+		}
+
+		/**
 		 * Mark the passage being annotated right now, in the text itself.
 		 *
 		 * The card no longer repeats the quote: this paint is what tells the person which words
@@ -490,7 +524,7 @@ window.__ModuleLoader__.load({
 			input.addEventListener("compositionend", () => { window.setTimeout?.(() => { composing = false; }, 0); composing = false; });
 			input.addEventListener("keydown", (event) => {
 				if (event.key !== "Enter" || event.shiftKey === true) return;
-				if (event.isComposing === true || event.keyCode === 229 || composing === true) return;
+				if (composingEnter({ isComposing: event.isComposing, keyCode: event.keyCode, composing })) return;
 				event.preventDefault();
 				commit();
 			});
@@ -579,16 +613,13 @@ window.__ModuleLoader__.load({
 				/** The selection text present when the press began, so a plain click is not a new one. */
 				let pressSelection = null;
 				const onDown = (event) => {
-					// A press inside this plugin's own UI belongs to it: the button opens the editor on
-					// exactly this press.
-					if (event?.target?.closest?.("[data-dsh-annotate]") != null) return;
-					if (editing !== null) {
-						// The release of the press that opened the card is not "anywhere else": the card
-						// may sit away from the cursor, leaving bare text under it.
-						if (Date.now() - openedAt < 300) return;
-						dismiss();
-						return;
-					}
+					const action = pressAction({
+						inside: event?.target?.closest?.("[data-dsh-annotate]") != null,
+						open: editing !== null,
+						sinceOpened: Date.now() - openedAt,
+					});
+					if (action === "ignore") return;
+					if (action === "close") { dismiss(); return }
 					// The button belongs to the selection that produced it. Pressing anywhere else takes
 					// it away now, before the release, so it cannot outlive the highlight.
 					pressSelection = String(window.getSelection?.() ?? "");
@@ -602,9 +633,15 @@ window.__ModuleLoader__.load({
 					// Only a release that left a *different* selection earns a new button. A click on a
 					// table cell, a button, or padding often leaves the old selection untouched, and
 					// re-offering it there would resurrect a button the press just removed.
-					const now = String(window.getSelection?.() ?? "");
-					if (pressSelection !== null && now === pressSelection) { dismiss(); return; }
+					const current = String(window.getSelection?.() ?? "");
+					const wanted = offerAction({
+						inside: event?.target?.closest?.("[data-dsh-annotate]") != null,
+						open: false,
+						pressed: pressSelection,
+						current,
+					});
 					pressSelection = null;
+					if (wanted === false) { dismiss(); return }
 					const point = typeof event?.clientX === "number" && typeof event?.clientY === "number"
 						? { x: event.clientX, y: event.clientY }
 						: undefined;
@@ -697,6 +734,9 @@ window.__ModuleLoader__.load({
 		// Pure helpers, exported so the suite can pin the message it composes.
 		exports.composeBatch = composeBatch;
 		exports.readSelection = readSelection;
+		exports.pressAction = pressAction;
+		exports.offerAction = offerAction;
+		exports.composingEnter = composingEnter;
 		exports.placeMath = placeMath;
 
 		exports.collapse = collapse;
