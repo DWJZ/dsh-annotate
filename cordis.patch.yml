@@ -1,0 +1,11 @@
+# dsh-annotate bundle 层：只声明"插一个宿主插件行"。
+#
+# 宿主半侧本身不做任何事，但这一行不是可有可无的：客户端 bundle 是从 Loader 的
+# entry 里扫描带 `dsh.client` 的包组合出来的，没有这一行，client/ 那半边就不会
+# 被扫进浏览器组合。
+#
+# 安装：dsh plugin --profile web add link:<本目录>（desktop profile 由桌面应用的
+# 插件管理器添加）。
+- insert:
+    - id: dsh-annotate
+      name: dsh-annotate
