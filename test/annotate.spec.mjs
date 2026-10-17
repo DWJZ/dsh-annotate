@@ -143,5 +143,22 @@ check('a message selection is accepted', exports.readSelection(selectionOf(messa
 const own = { nodeType: 3, parentElement: { closest: (selector) => (selector.includes('data-dsh-annotate') ? {} : null) } }
 check('a selection inside this plugin UI is refused', exports.readSelection(selectionOf(own)) === undefined)
 
+
+console.log('Enter in the composer sends the draft and the annotations as one message')
+const drafted = []
+ctx.sessions.sessionOf = () => ({ prompt: (parts, mode) => { drafted.push(`${mode}:${parts[0].text}`); return Promise.resolve({ ok: true }) } })
+exports.pending.set('a', [{ quote: 'q', comment: 'c' }])
+const composer = { isContentEditable: true, innerText: '我的问题', focus: () => {}, closest: () => null }
+let prevented = false
+const enter = {
+  key: 'Enter', shiftKey: false, isComposing: false, target: composer,
+  preventDefault: () => { prevented = true }, stopPropagation: () => {},
+}
+for (const listener of documentListeners.get('keydown') ?? []) listener(enter)
+await new Promise((resolve) => { setTimeout(resolve, 20) })
+check('the composer submit is taken over', prevented === true)
+check('one queue message carrying both', drafted.length === 1 && drafted[0].startsWith('queue:我的问题') && drafted[0].includes('quoteLabel：「q」'), JSON.stringify(drafted))
+check('and the chips cleared', exports.pending.get('a').length === 0)
+
 console.log(failures === 0 ? "\nPASS" : `\n${String(failures)} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)

@@ -143,9 +143,11 @@ window.__ModuleLoader__.load({
 				pending.set(sessionId, []);
 				problems.delete(sessionId);
 				changed();
+				return true;
 			}).catch((failure) => {
 				problems.set(sessionId, String(failure?.message ?? failure));
 				changed();
+				return false;
 			});
 		}
 
@@ -527,12 +529,53 @@ window.__ModuleLoader__.load({
 				};
 				const onKey = (event) => { if (event.key === "Escape") dismiss() };
 				const onScroll = () => { if (editing === null) dismiss() };
+				/**
+				 * Enter in the composer sends the draft *and* the waiting annotations as one message.
+				 *
+				 * Captured before the composer sees the key, because its own submit would send the
+				 * draft alone and leave the annotations behind. The draft is read off the editor and
+				 * cleared through the editor's own editing command, since no plugin-facing API writes
+				 * the composer.
+				 */
+				const onComposerEnter = (event) => {
+					if (event.key !== "Enter" || event.shiftKey === true || event.isComposing === true) return;
+					if (editing !== null) return;
+					const target = event.target;
+					if (target?.closest?.("[data-dsh-annotate]")) return;
+					const textarea = target?.tagName === "TEXTAREA";
+					const inEditor = target?.isContentEditable === true
+						|| target?.closest?.('[contenteditable="true"]') != null;
+					if (!textarea && !inEditor) return;
+					const sessionId = onScreen() ?? [...pending.keys()].find(id => itemsOf(id).length > 0) ?? "";
+					const batch = composeBatch(itemsOf(sessionId), t);
+					if (!sendable(batch)) return;
+					const raw = textarea ? target.value : target.innerText ?? target.textContent ?? "";
+					const draft = String(raw).trim();
+					const text = draft === "" ? batch : `${draft}\n\n${batch}`;
+					event.preventDefault();
+					event.stopPropagation();
+					void flush(sessionId, text).then((sent) => {
+						// Only clear the box when the message really went out; a failed send must
+						// leave the words where the person can try again.
+						if (sent !== true) return;
+						// Best effort: the editor owns its model, so its own command is the closest a
+						// plugin can get to clearing the box. A failure here leaves the text behind,
+						// which the person can still delete by hand.
+						try {
+							target.focus();
+							document.execCommand?.("selectAll");
+							document.execCommand?.("delete");
+						} catch { /* the editor refused the command; nothing to recover */ }
+					});
+				};
 				document.addEventListener("mouseup", onUp);
 				document.addEventListener("keydown", onKey);
+				document.addEventListener("keydown", onComposerEnter, true);
 				window.addEventListener("scroll", onScroll, true);
 				return () => {
 					document.removeEventListener("mouseup", onUp);
 					document.removeEventListener("keydown", onKey);
+					document.removeEventListener("keydown", onComposerEnter, true);
 						window.removeEventListener("scroll", onScroll, true);
 						if (layer !== null) { layer.remove(); layer = null }
 				};
