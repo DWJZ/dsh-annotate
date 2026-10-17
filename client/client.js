@@ -101,6 +101,8 @@ window.__ModuleLoader__.load({
 		 * this closure: the injection is where a session-scoped ctx exists.
 		 */
 		let sendPending = null;
+		/** The Session-scoped context the composer dock injection runs in. */
+		let dockScope = null;
 		/**
 		 * Why the last send failed, per Session, shown in the chip row.
 		 *
@@ -129,7 +131,17 @@ window.__ModuleLoader__.load({
 				changed();
 				return undefined;
 			}
-			return Promise.resolve(sendPending(sessionId, text)).then(() => {
+			// The send may refuse synchronously (a service without a Session scope does), so the
+			// call itself is guarded: otherwise the click handler dies before any notice shows.
+			let started
+			try {
+				started = sendPending(sessionId, text)
+			} catch (failure) {
+				problems.set(sessionId, String(failure?.message ?? failure));
+				changed();
+				return undefined;
+			}
+			return Promise.resolve(started).then(() => {
 				pending.set(sessionId, []);
 				problems.delete(sessionId);
 				changed();
@@ -486,14 +498,15 @@ window.__ModuleLoader__.load({
 			// The send uses the public conversation face: `IConversation.send` is contract, and the
 			// session scope is what makes it target this Session's own turn.
 			sendPending = (sessionId, text) => {
-				const scope = ctx.sessions.scope(sessionId);
-				if (scope === undefined) throw new Error(t("noSend"));
-				const conversation = scope.get?.("uiConversation") ?? ctx.uiConversation;
+				const conversation = dockScope?.get?.("uiConversation") ?? ctx.uiConversation;
 				if (conversation === undefined || typeof conversation.send !== "function") throw new Error(t("noSend"));
 				return conversation.send(text);
 			};
 
-			ctx.slots.inject("conversation.input.dock", () => {
+			ctx.slots.inject("conversation.input.dock", (barCtx) => {
+				// The injection runs inside the slot's Session scope, and that is what
+				// `IConversation.send` needs: it resolves the Session from its own instance.
+				dockScope = barCtx;
 				const dispose = ctx.slots.register({
 					name: "conversation.input.dock",
 					id: "annotate",
