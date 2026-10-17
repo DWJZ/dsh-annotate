@@ -533,11 +533,6 @@ window.__ModuleLoader__.load({
 					event.preventDefault();
 					event.stopPropagation();
 					void flush(sessionId, text);
-					// Best effort: the editor owns its own model, so clearing the text and
-					// announcing an input is the most a plugin outside it can do.
-					if (textarea) target.value = "";
-					else target.textContent = "";
-					target.dispatchEvent(new Event("input", { bubbles: true }));
 				};
 				const onScroll = () => { if (editing === null) dismiss() };
 				const onResize = () => { alignToComposer(chipsRow) };
@@ -561,10 +556,16 @@ window.__ModuleLoader__.load({
 			// The send needs a session-scoped context: the slots injection hands out the plugin's
 			// own scope, where `uiConversation` has no session to send into. The sessions service
 			// borrows the retained one, which is the same context the shell's own commands run in.
+			// The proper entry points are the per-session input facade: write the composed text
+			// into the draft, then let the conversation's own submit run. That is the same path
+			// the composer takes, so it clears the box and honours claim/queue rules for us.
 			sendPending = (sessionId, text) => {
 				const scope = ctx.sessions.scope(sessionId);
 				if (scope === undefined) throw new Error(t("noSend"));
-				return scope.uiConversation.send(text);
+				const input = ctx.uiConversation.input.for(scope);
+				input.setDraft(text);
+				input.submit(undefined, "enter");
+				return Promise.resolve();
 			};
 
 			ctx.slots.inject("conversation.input.dock", () => {

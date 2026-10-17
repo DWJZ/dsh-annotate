@@ -67,6 +67,7 @@ check('a multi-line selection stays on one line', exports.composeBatch([{ quote:
 
 console.log('the dock sends the whole set once')
 const sent = []
+const drafts = []
 const listListeners = []
 let registration = null
 const ctx = {
@@ -74,11 +75,11 @@ const ctx = {
   locale: { register: () => {}, bind: () => t },
   sessions: {
     list: { getSnapshot: () => ({ ids: ['a'], byId: { a: { id: 'a', retainedBy: { mainView: 1 } } } }), subscribe: (fn) => { listListeners.push(fn); return () => {} } },
-    // The send goes through the borrowed session scope, not the plugin's own context.
-    scope: () => ({ uiConversation: { send: (text) => { sent.push(text); return Promise.resolve() } } }),
+    scope: () => ({}),
   },
+  // The per-session input facade: write the draft, submit, and the app clears the box.
+  uiConversation: { input: { for: () => ({ setDraft: (text) => { drafts.push(text) }, submit: () => { sent.push(drafts.at(-1)) } }) } },
   slots: { inject: (name, factory) => { factory({ uiConversation: { send: (text) => { sent.push(text); return Promise.resolve() } } }) }, register: (options, component) => { registration = { options, component }; return () => {} } },
-  uiConversation: { send: () => Promise.resolve() },
 }
 exports.apply(ctx)
 check('it registers into the composer dock', registration !== null && registration.options.name === 'conversation.input.dock', JSON.stringify(registration?.options))
@@ -135,7 +136,7 @@ await new Promise((resolve) => { setTimeout(resolve, 20) })
 check('the composer submit is taken over', prevented === true)
 check('the draft and the annotations go out as one message',
   sent.length === beforeEnter + 1 && sent.at(-1).startsWith('我的问题') && sent.at(-1).includes('quoteLabel：「q」'), JSON.stringify(sent.at(-1)))
-check('the composer is cleared', composer.textContent === '', JSON.stringify(composer.textContent))
+check('the composed text went through the draft facade', String(drafts.at(-1)).startsWith('我的问题'), JSON.stringify(drafts.at(-1)))
 check('and the chips are gone', exports.pending.get('a').length === 0)
 
 console.log('with nothing annotated, Enter is left alone')
