@@ -27,7 +27,7 @@ window.__ModuleLoader__.load({
 			const tag = document.createElement("style");
 			tag.setAttribute("data-plugin-css", CSS_ID);
 			tag.textContent = [
-				".dsha_chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 0 4px}",
+				".dsha_chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;width:100%;max-width:var(--dsh-composer-card-max-width,100%);margin:0 auto;padding:0 0 4px;box-sizing:border-box}",
 				".dsha_chip{display:inline-flex;align-items:center;gap:6px;max-width:340px;height:26px;padding:0 8px;border-radius:999px;border:1px solid color-mix(in srgb,CanvasText 20%,transparent);background:color-mix(in srgb,CanvasText 8%,transparent);color:CanvasText;font:inherit;font-size:12px;line-height:1}",
 				".dsha_chip_quote,.dsha_chip_comment{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
 				".dsha_chip_quote{max-width:150px;opacity:.65}",
