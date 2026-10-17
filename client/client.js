@@ -347,10 +347,14 @@ window.__ModuleLoader__.load({
 		 * @param sessionId - the Session on screen, when one is.
 		 * @param t - this namespace's translate function.
 		 */
-		function offer(sessionId, t) {
+		function offer(sessionId, t, point) {
 			const read = readSelection(window.getSelection());
 			if (read === undefined || sessionId === undefined) { dismiss(); return; }
-			const rect = read.range?.getBoundingClientRect();
+			// Beside the pointer when the release told us where it was, so the button lands where
+			// the hand already is; the selection rectangle is the fallback for keyboard selections.
+			const rect = point === undefined
+				? read.range?.getBoundingClientRect()
+				: { left: point.x + 12, top: point.y, bottom: point.y, width: 1, height: 1 };
 			if (rect === undefined || (rect.width === 0 && rect.height === 0)) { dismiss(); return; }
 			dismiss(true);
 			const button = document.createElement("button");
@@ -535,7 +539,10 @@ window.__ModuleLoader__.load({
 					// press lands wherever the card was moved away from, and re-offering there
 					// would wipe the card that just appeared.
 					if (editing !== null) return;
-					offer(onScreen(), t);
+					const point = typeof event?.clientX === "number" && typeof event?.clientY === "number"
+						? { x: event.clientX, y: event.clientY }
+						: undefined;
+					offer(onScreen(), t, point);
 				};
 				const onKey = (event) => { if (event.key === "Escape") dismiss() };
 				const onScroll = () => { if (editing === null) dismiss() };
