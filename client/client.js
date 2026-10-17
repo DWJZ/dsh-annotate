@@ -32,7 +32,7 @@ window.__ModuleLoader__.load({
 				"@keyframes dsha_in{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}",
 				"@keyframes dsha_out{to{opacity:0;transform:translateY(-4px) scale(.98)}}",
 				".dsha_row{display:flex;align-items:center;gap:8px;justify-content:flex-end}",
-				".dsha_chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 0 4px}",
+				".dsha_chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 var(--dsh-composer-side-clearance, 0) 4px;max-width:var(--dsh-composer-card-max-width, 100%);box-sizing:border-box}",
 				".dsha_chip{display:inline-flex;align-items:center;gap:6px;max-width:340px;height:26px;padding:0 8px;border-radius:999px;border:1px solid color-mix(in srgb,CanvasText 20%,transparent);background:color-mix(in srgb,CanvasText 8%,transparent);color:CanvasText;font:inherit;font-size:12px;line-height:1}",
 				".dsha_chip_quote,.dsha_chip_comment{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
 				".dsha_chip_quote{max-width:150px;opacity:.65}",
