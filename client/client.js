@@ -297,6 +297,43 @@ window.__ModuleLoader__.load({
 		 * @param rect - the range's rectangle, in viewport coordinates.
 		 */
 		/**
+		 * Empty the composer after its text has been sent.
+		 *
+		 * No plugin-facing API writes the composer, so this drives the editor the way a person
+		 * would: select everything, delete, and then, when the editor ignored the command, replace
+		 * the text and announce an input event so its model reconciles.
+		 * @param target - the element the Enter press landed on.
+		 * @param textarea - whether that element is a plain textarea.
+		 */
+		function clearComposer(target, textarea) {
+			if (textarea === true) {
+				target.value = "";
+				target.dispatchEvent(new Event("input", { bubbles: true }));
+				return;
+			}
+			const root = target?.closest?.('[contenteditable="true"]') ?? target;
+			if (root === null || root === undefined) return;
+			try {
+				root.focus?.();
+				const selection = window.getSelection?.();
+				const range = document.createRange?.();
+				if (selection !== null && selection !== undefined && range !== null && range !== undefined) {
+					range.selectNodeContents(root);
+					selection.removeAllRanges?.();
+					selection.addRange?.(range);
+					document.execCommand?.("delete");
+				}
+			} catch { /* fall through to the text replacement below */ }
+			if (String(root.textContent ?? "") !== "") {
+				root.textContent = "";
+				const event = typeof InputEvent === "function"
+					? new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" })
+					: new Event("input", { bubbles: true });
+				root.dispatchEvent(event);
+			}
+		}
+
+		/**
 		 * Where one floating element goes, given the selection and the viewport.
 		 *
 		 * Below the selection when it fits, above it when it does not, and clamped to the
@@ -558,14 +595,7 @@ window.__ModuleLoader__.load({
 						// Only clear the box when the message really went out; a failed send must
 						// leave the words where the person can try again.
 						if (sent !== true) return;
-						// Best effort: the editor owns its model, so its own command is the closest a
-						// plugin can get to clearing the box. A failure here leaves the text behind,
-						// which the person can still delete by hand.
-						try {
-							target.focus();
-							document.execCommand?.("selectAll");
-							document.execCommand?.("delete");
-						} catch { /* the editor refused the command; nothing to recover */ }
+						clearComposer(target, textarea);
 					});
 				};
 				document.addEventListener("mouseup", onUp);
@@ -615,6 +645,7 @@ window.__ModuleLoader__.load({
 		// Pure helpers, exported so the suite can pin the message it composes.
 		exports.composeBatch = composeBatch;
 		exports.readSelection = readSelection;
+		exports.clearComposer = clearComposer;
 		exports.placeMath = placeMath;
 
 		exports.collapse = collapse;

@@ -160,5 +160,17 @@ check('the composer submit is taken over', prevented === true)
 check('one queue message carrying both', drafted.length === 1 && drafted[0].startsWith('queue:我的问题') && drafted[0].includes('quoteLabel：「q」'), JSON.stringify(drafted))
 check('and the chips cleared', exports.pending.get('a').length === 0)
 
+
+console.log('the composer is emptied after its text goes out')
+const fakeInput = { value: '我的问题', dispatchEvent: () => {} }
+exports.clearComposer(fakeInput, true)
+check('a textarea is cleared', fakeInput.value === '')
+const editable = { textContent: '我的问题', focus: () => {}, dispatchEvent: () => {}, closest: () => null }
+globalThis.document.createRange = () => ({ selectNodeContents: () => {} })
+globalThis.window.getSelection = () => ({ removeAllRanges: () => {}, addRange: () => {} })
+globalThis.document.execCommand = () => false
+exports.clearComposer(editable, false)
+check('an editor that ignores the command is emptied by text', editable.textContent === '')
+
 console.log(failures === 0 ? "\nPASS" : `\n${String(failures)} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)
