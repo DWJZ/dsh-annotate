@@ -28,7 +28,7 @@ window.__ModuleLoader__.load({
 			tag.setAttribute("data-plugin-css", CSS_ID);
 			tag.textContent = [
 				".dsha_chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;width:100%;max-width:var(--dsh-composer-card-max-width,100%);margin:0 auto;padding:0 0 4px;box-sizing:border-box}",
-				".dsha_chip{display:inline-flex;align-items:center;gap:6px;max-width:340px;height:26px;padding:0 8px;border-radius:999px;border:1px solid color-mix(in srgb,CanvasText 20%,transparent);background:color-mix(in srgb,CanvasText 8%,transparent);color:CanvasText;font:inherit;font-size:12px;line-height:1}",
+				".dsha_chip{display:inline-flex;align-items:center;gap:6px;max-width:340px;height:26px;padding:0 8px;border-radius:999px;border:1px solid color-mix(in srgb,CanvasText 20%,transparent);background:color-mix(in srgb,CanvasText 8%,Canvas);color:CanvasText;font:inherit;font-size:12px;line-height:1}",
 				".dsha_chip_quote,.dsha_chip_comment{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
 				".dsha_chip_quote{max-width:150px;opacity:.65}",
 				".dsha_chip_comment{max-width:130px;font-weight:500}",
@@ -321,10 +321,15 @@ window.__ModuleLoader__.load({
 					range.selectNodeContents(root);
 					selection.removeAllRanges?.();
 					selection.addRange?.(range);
-					document.execCommand?.("delete");
+					// `insertText` goes through the editing-command path the editor listens to;
+					// `delete` alone is often ignored, and a plain DOM rewrite is repainted from
+					// the editor's own model on the next frame.
+					if (document.execCommand?.("insertText", false, "\u200b") !== true) {
+						document.execCommand?.("delete");
+					}
 				}
 			} catch { /* fall through to the text replacement below */ }
-			if (String(root.textContent ?? "") !== "") {
+			if (String(root.textContent ?? "").replaceAll("\u200b", "") !== "") {
 				root.textContent = "";
 				const event = typeof InputEvent === "function"
 					? new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" })
@@ -425,7 +430,7 @@ window.__ModuleLoader__.load({
 			quote.className = "dsha_quote";
 			quote.textContent = read.text;
 			quote.style.cssText = "max-height:88px;overflow:auto;padding:8px 10px;border-radius:10px;font-size:12px;line-height:1.6;"
-				+ "opacity:.85;white-space:pre-wrap;background:color-mix(in srgb,CanvasText 8%,transparent)";
+				+ "opacity:.85;white-space:pre-wrap;background:color-mix(in srgb,CanvasText 8%,Canvas)";
 
 			const input = document.createElement("textarea");
 			input.className = "dsha_input";
