@@ -414,9 +414,12 @@ window.__ModuleLoader__.load({
 			// A missing scope is not an error the caller can fix, but it is the reason nothing
 			// reached the composer, so say so instead of returning silently.
 			if (scope === undefined) return "scope-missing";
-			// The session-scoped face carries the input resolver; the root projection does not.
-			const resolver = scope.uiConversation?.input
-				?? ctx.uiConversation?.input
+			// `ctx.get` reads the service store through this scope: the property proxy would throw
+			// "cannot get property uiConversation without inject" on a ctx that did not declare it,
+			// and the session-scoped face is where the input resolver lives.
+			const conversation = scope.get?.("uiConversation") ?? ctx.uiConversation;
+			const resolver = conversation?.input
+				?? scope.get?.("uiSession")?.input
 				?? ctx.uiSession?.input;
 			if (resolver === undefined || typeof resolver.for !== "function") return "input-missing";
 			const input = resolver.for(scope);
