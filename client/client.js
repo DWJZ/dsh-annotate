@@ -382,7 +382,38 @@ window.__ModuleLoader__.load({
 		 * @param props - the slot's props, plus the Session these chips belong to and the send they may use.
 		 * @returns the chip row, or null while nothing waits.
 		 */
+		/**
+		 * Line the chip row up with the composer on screen.
+		 *
+		 * The dock container spans the whole content column while the composer card is inset
+		 * by a clearance variable that is not in scope there, so the only dependable
+		 * reference is the editor itself: measure both and pad the difference.
+		 * @param node - the chip row.
+		 */
+		function alignToComposer(node) {
+			if (node === null || node === undefined || typeof document.querySelector !== "function") return;
+			const editor = document.querySelector('[contenteditable="true"]');
+			const parent = node.parentElement;
+			if (editor === null || editor === undefined || parent === null || parent === undefined) return;
+			const box = editor.getBoundingClientRect();
+			const frame = parent.getBoundingClientRect();
+			if (box.width === 0) return;
+			node.style.paddingLeft = `${String(Math.max(0, box.left - frame.left))}px`;
+			node.style.paddingRight = `${String(Math.max(0, frame.right - box.right))}px`;
+			node.style.maxWidth = "none";
+		}
+
+		/**
+		 * The chips above the composer: one per waiting annotation, plus the action that
+		 * sends them all — the shape native attachments use, for the same reason.
+		 * @param props - the slot's props, plus the Session these chips belong to and the send they may use.
+		 * @returns the chip row, or null while nothing waits.
+		 */
 		function AnnotateChips({ t, sessionId, send }) {
+			const row = typeof React.useRef === "function" ? React.useRef(null) : { current: null };
+			if (typeof React.useLayoutEffect === "function") {
+				React.useLayoutEffect(() => { alignToComposer(row.current) });
+			}
 			const [, redraw] = React.useState(0);
 			React.useEffect(() => {
 				const watcher = () => { redraw((value) => value + 1) };
@@ -408,7 +439,7 @@ window.__ModuleLoader__.load({
 				settled.catch((failure) => { setMessage(String(failure?.message ?? failure)) });
 			};
 
-			return React.createElement("div", { className: "dsha_chips" },
+			return React.createElement("div", { className: "dsha_chips", ref: row },
 				...items.map((item, position) => React.createElement("span", {
 					className: "dsha_chip",
 					key: `${String(position)}-${item.quote.slice(0, 12)}`,
@@ -467,18 +498,25 @@ window.__ModuleLoader__.load({
 					if (event.key !== "Enter" || event.shiftKey === true || event.isComposing === true) return;
 					const target = event.target;
 					if (target?.closest?.("[data-dsh-annotate]")) return;
-					if (typeof target?.value !== "string" || target.tagName !== "TEXTAREA") return;
+					// The composer is a contenteditable draft editor; a textarea is accepted too, so
+					// this keeps working if that surface ever changes.
+					const textarea = target?.tagName === "TEXTAREA";
+					if (target?.isContentEditable !== true && textarea !== true) return;
 					const sessionId = onScreen() ?? "";
 					const items = itemsOf(sessionId);
 					if (items.length === 0) return;
 					const batch = composeBatch(items, t);
 					if (!sendable(batch)) return;
-					const draft = target.value.trim();
+					const raw = textarea ? target.value : target.innerText ?? target.textContent ?? "";
+					const draft = String(raw).trim();
 					const text = draft === "" ? batch : `${draft}\n\n${batch}`;
 					event.preventDefault();
 					event.stopPropagation();
 					void flush(sessionId, text);
-					target.value = "";
+					// Best effort: the editor owns its own model, so clearing the text and
+					// announcing an input is the most a plugin outside it can do.
+					if (textarea) target.value = "";
+					else target.textContent = "";
 					target.dispatchEvent(new Event("input", { bubbles: true }));
 				};
 				const onScroll = () => { if (editing === null) dismiss() };

@@ -115,8 +115,10 @@ console.log('Enter in the composer carries the annotations along')
 exports.pending.set('a', [{ quote: 'q', comment: 'c' }])
 let prevented = false
 const composer = {
-  tagName: 'TEXTAREA',
-  value: '  我的问题  ',
+  // The real composer is a contenteditable draft editor, not a textarea.
+  isContentEditable: true,
+  innerText: "  我的问题  ",
+  textContent: "  我的问题  ",
   closest: () => null,
   dispatchEvent: () => {},
 }
@@ -134,7 +136,7 @@ await new Promise((resolve) => { setTimeout(resolve, 20) })
 check('the composer submit is taken over', prevented === true)
 check('the draft and the annotations go out as one message',
   sent.length === beforeEnter + 1 && sent.at(-1).startsWith('我的问题') && sent.at(-1).includes('quoteLabel：「q」'), JSON.stringify(sent.at(-1)))
-check('the composer is cleared', composer.value === '', JSON.stringify(composer.value))
+check('the composer is cleared', composer.textContent === '', JSON.stringify(composer.textContent))
 check('and the chips are gone', exports.pending.get('a').length === 0)
 
 console.log('with nothing annotated, Enter is left alone')
