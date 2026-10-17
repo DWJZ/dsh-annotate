@@ -179,5 +179,13 @@ check('keyCode 229 is not a save', exports.composingEnter({ isComposing: false, 
 check('an open composition is not a save', exports.composingEnter({ isComposing: false, keyCode: 13, composing: true }) === true)
 check('a plain Enter is a save', exports.composingEnter({ isComposing: false, keyCode: 13, composing: false }) === false)
 
+
+console.log('saving an annotation returns the keyboard to the composer')
+const fakeComposer = { focused: 0, focus() { this.focused += 1 } }
+globalThis.document.querySelector = (selector) => (String(selector).includes('data-composer-card') ? fakeComposer : null)
+check('the composer takes the focus', exports.focusComposer() === true && fakeComposer.focused === 1)
+globalThis.document.querySelector = () => null
+check('and a missing composer is reported, not thrown', exports.focusComposer() === false)
+
 console.log(failures === 0 ? "\nPASS" : `\n${String(failures)} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)

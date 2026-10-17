@@ -251,6 +251,20 @@ window.__ModuleLoader__.load({
 		}
 
 		/**
+		 * Put the keyboard back in the composer, so a finished annotation can be sent with Enter
+		 * alone. The composer is a contenteditable surface, and no plugin-facing action focuses it.
+		 * @returns whether an element took the focus.
+		 */
+		function focusComposer() {
+			if (typeof document.querySelector !== "function") return false;
+			const editor = document.querySelector('[data-composer-card] [data-composer-input][contenteditable="true"]')
+				?? document.querySelector('[data-composer-card] textarea');
+			if (editor === null || editor === undefined) return false;
+			editor.focus?.();
+			return true;
+		}
+
+		/**
 		 * Mark the passage being annotated right now, in the text itself.
 		 *
 		 * The card no longer repeats the quote: this paint is what tells the person which words
@@ -509,7 +523,12 @@ window.__ModuleLoader__.load({
 				if (comment === "") { input.focus(); return; }
 				add(sessionId, read.text, comment, read.range);
 				const problem = problems.get(sessionId) ?? "";
-				if (problem === "") { dismiss(); return; }
+				if (problem === "") {
+					dismiss();
+					// The next Enter sends: the composer already holds this annotation.
+					focusComposer();
+					return;
+				}
 				hint.textContent = problem === "no-send" ? t("noSend") : problem;
 				hint.style.opacity = "1";
 			};
@@ -735,6 +754,7 @@ window.__ModuleLoader__.load({
 		exports.composeBatch = composeBatch;
 		exports.readSelection = readSelection;
 		exports.pressAction = pressAction;
+		exports.focusComposer = focusComposer;
 		exports.offerAction = offerAction;
 		exports.composingEnter = composingEnter;
 		exports.placeMath = placeMath;
