@@ -472,10 +472,16 @@ window.__ModuleLoader__.load({
 			cancel.addEventListener("click", () => { dismiss(); });
 			const save = action(t("save"), true);
 			save.addEventListener("click", commit);
+			// An Enter that is still composing a character belongs to the input method, not to
+			// this card: with a Chinese IME the same key both accepts the candidate and would
+			// otherwise save the annotation. `keyCode 229` covers the browsers that stop
+			// reporting `isComposing` before the keydown that ends the composition.
+			let composing = false;
+			input.addEventListener("compositionstart", () => { composing = true; });
+			input.addEventListener("compositionend", () => { window.setTimeout?.(() => { composing = false; }, 0); composing = false; });
 			input.addEventListener("keydown", (event) => {
-				// Enter saves and Shift+Enter breaks the line: the card is small, and leaving on
-				// a plain Enter is what a one-line comment invites.
 				if (event.key !== "Enter" || event.shiftKey === true) return;
+				if (event.isComposing === true || event.keyCode === 229 || composing === true) return;
 				event.preventDefault();
 				commit();
 			});
@@ -513,11 +519,6 @@ window.__ModuleLoader__.load({
 				pending.set(sessionId, list);
 				changed();
 			};
-			const sendAll = () => {
-				const text = composeBatch(itemsOf(sessionId), t);
-				if (!sendable(text)) return;
-				void flush(sessionId, text);
-			};
 
 			return React.createElement("div", { className: "dsha_chips" },
 				...items.map((item, position) => React.createElement("span", {
@@ -535,8 +536,6 @@ window.__ModuleLoader__.load({
 					title: t("remove"),
 					onClick: (event) => { event?.stopPropagation?.(); remove(position) },
 				}, "✕"))),
-				React.createElement("button", { type: "button", className: "dsha_chip dsha_chip_send", onClick: sendAll },
-					t("sendAllCount", { count: items.length })),
 				problem === "" ? null : React.createElement("span", { className: "dsha_chip_note" }, problem === "no-send" ? t("noSend") : problem));
 		}
 		//#endregion
