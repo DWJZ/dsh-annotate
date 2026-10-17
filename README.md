@@ -12,7 +12,7 @@ Select a passage of an answer, write what you think about it; annotate as many p
 
 - Select text in an answer and a small **Annotate** button appears next to the selection; open it and write the comment for that passage. **Enter saves, Shift+Enter breaks the line**, and the button and card each animate in and out briefly.
 - Annotate as often as you like, each one independent: its own quote, its own comment.
-- The annotations waiting to be sent appear as **chips in the strip at the top of the composer** — the same strip native image and file attachments use — each showing its quote and comment, each removable, ending with one **Send all (n)** chip.
+- The annotations waiting to be sent appear as **chips in one row just above the composer**, shaped like native image and file attachments — each showing its quote and comment, each removable, ending with one **Send all (n)** chip.
 - **Send them together** composes them into one numbered message in the current Session:
 
   ```

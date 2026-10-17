@@ -74,7 +74,7 @@ const ctx = {
   uiConversation: { send: () => Promise.resolve() },
 }
 exports.apply(ctx)
-check('it registers into the composer strip', registration !== null && registration.options.name === 'conversation.input.overlay', JSON.stringify(registration?.options))
+check('it registers into the composer dock', registration !== null && registration.options.name === 'conversation.input.dock', JSON.stringify(registration?.options))
 check('ordered before the todo dock', registration.options.order === 5)
 
 exports.pending.set('a', [{ quote: 'q', comment: 'c' }])
