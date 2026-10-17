@@ -32,15 +32,6 @@ window.__ModuleLoader__.load({
 				"@keyframes dsha_in{from{opacity:0;transform:translateY(-4px) scale(.98)}to{opacity:1;transform:none}}",
 				"@keyframes dsha_out{to{opacity:0;transform:translateY(-4px) scale(.98)}}",
 				".dsha_row{display:flex;align-items:center;gap:8px;justify-content:flex-end}",
-				".dsha_chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:0 var(--dsh-composer-side-clearance, 0) 4px;max-width:var(--dsh-composer-card-max-width, 100%);box-sizing:border-box}",
-				".dsha_chip{display:inline-flex;align-items:center;gap:6px;max-width:340px;height:26px;padding:0 8px;border-radius:999px;border:1px solid color-mix(in srgb,CanvasText 20%,transparent);background:color-mix(in srgb,CanvasText 8%,transparent);color:CanvasText;font:inherit;font-size:12px;line-height:1}",
-				".dsha_chip_quote,.dsha_chip_comment{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
-				".dsha_chip_quote{max-width:150px;opacity:.65}",
-				".dsha_chip_comment{max-width:130px;font-weight:500}",
-				".dsha_chip_x{border:0;background:transparent;color:inherit;opacity:.55;cursor:pointer;font:inherit;font-size:11px;padding:0}",
-				".dsha_chip_x:hover{opacity:1}",
-				".dsha_chip_send{cursor:pointer;border-color:transparent;background:CanvasText;color:Canvas;font-weight:600}",
-				".dsha_chip_note{font-size:11px;opacity:.6}",
 
 				".dsha_grow{flex:1;min-width:0}",
 				"::highlight(dsh-annotate){background-color:color-mix(in srgb, var(--dsw-alias-label-primary) 22%, transparent)}"
@@ -101,6 +92,8 @@ window.__ModuleLoader__.load({
 		 * this closure: the injection is where a session-scoped ctx exists.
 		 */
 		let sendPending = null;
+		/** Set by apply: puts one Session waiting annotations into its draft. */
+		let syncPending = null;
 		/**
 		 * Why the last send failed, per Session, shown in the chip row.
 		 *
@@ -156,6 +149,7 @@ window.__ModuleLoader__.load({
 				ranges.set(sessionId, painted);
 				paint(sessionId, painted);
 			}
+			syncPending?.(sessionId);
 			changed();
 		}
 		//#endregion
@@ -218,8 +212,6 @@ window.__ModuleLoader__.load({
 		let layer = null;
 		/** The Session the open editor belongs to. */
 		let editing = null;
-		/** The mounted chip row, so a resize can line it up again. */
-		let chipsRow = null;
 
 		/**
 		 * The layer that holds this plugin's floating UI.
@@ -392,89 +384,34 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 
-		//#region composer chips
+		//#region draft composition
+		/** The exact block this plugin put into each draft last time, so it can be replaced. */
+		const lastBlock = new Map();
+
 		/**
-		 * The chips at the top of the composer: one per waiting annotation, plus the action
-		 * that sends them all. Native attachments live in the same strip, so a person reads
-		 * both the same way — something attached to what they are about to send.
-		 * @param props - the slot's props, plus the Session these chips belong to and the send they may use.
-		 * @returns the chip row, or null while nothing waits.
-		 */
-		/**
-		 * Line the chip row up with the composer on screen.
+		 * Put the waiting annotations into the composer's draft.
 		 *
-		 * The dock container spans the whole content column while the composer card is inset
-		 * by a clearance variable that is not in scope there, so the only dependable
-		 * reference is the editor itself: measure both and pad the difference.
-		 * @param node - the chip row.
+		 * The draft *is* the UI: what the person sees in the box is exactly what Enter sends,
+		 * so nothing has to intercept the keyboard — the conversation's own submit carries it.
+		 * The person's own typing is preserved by replacing only the block this plugin added.
+		 * @param ctx - the client plugin context.
+		 * @param t - this namespace's translate function.
+		 * @param sessionId - the Session whose draft to update.
 		 */
-		function alignToComposer(node) {
-			if (node === null || node === undefined) return;
-			// The composer is the last contenteditable on the page (the annotation editor lives
-			// inside this plugin's layer and is excluded first).
-			const editables = [...document.querySelectorAll('[contenteditable="true"]')]
-				.filter(element => element.closest?.("[data-dsh-annotate]") === null);
-			const editor = editables.at(-1);
-			const parent = node.parentElement;
-			if (editor === undefined || parent === null || parent === undefined) return;
-			const box = editor.getBoundingClientRect();
-			const frame = parent.getBoundingClientRect();
-			if (box.width === 0) return;
-			node.style.paddingLeft = `${String(Math.max(0, box.left - frame.left))}px`;
-			node.style.paddingRight = `${String(Math.max(0, frame.right - box.right))}px`;
-		}
-
-		/**
-		 * The chips above the composer: one per waiting annotation, plus the action that
-		 * sends them all — the shape native attachments use, for the same reason.
-		 * @param props - the slot's props, plus the Session these chips belong to and the send they may use.
-		 * @returns the chip row, or null while nothing waits.
-		 */
-		function AnnotateChips({ t, sessionId }) {
-			const row = typeof React.useRef === "function" ? React.useRef(null) : { current: null };
-			if (typeof React.useEffect === "function") {
-				React.useEffect(() => {
-					// After paint: a layout effect runs before the composer has a box to measure.
-					const later = () => { chipsRow = row.current; alignToComposer(chipsRow) };
-					if (typeof window.requestAnimationFrame !== "function") { later(); return undefined }
-					const frame = window.requestAnimationFrame(later);
-					return () => { window.cancelAnimationFrame?.(frame) };
-				});
-			}
-			const [, redraw] = React.useState(0);
-			React.useEffect(() => {
-				const watcher = () => { redraw((value) => value + 1) };
-				watchers.add(watcher);
-				return () => { watchers.delete(watcher) };
-			}, []);
-			const items = itemsOf(sessionId);
-			const problem = problems.get(sessionId) ?? "";
-			if (items.length === 0) return null;
-
-			const remove = (position) => {
-				const list = itemsOf(sessionId).slice();
-				list.splice(position, 1);
-				pending.set(sessionId, list);
-				changed();
-			};
-
-			return React.createElement("div", { className: "dsha_chips", ref: row },
-				...items.map((item, position) => React.createElement("span", {
-					className: "dsha_chip",
-					key: `${String(position)}-${item.quote.slice(0, 12)}`,
-					// The chip is one line by design; the whole annotation is on hover.
-					title: `「${item.quote}」\n${item.comment}`,
-				},
-				React.createElement("span", { className: "dsha_chip_quote" }, `「${item.quote}」`),
-				React.createElement("span", { className: "dsha_chip_comment" }, item.comment),
-				React.createElement("button", {
-					type: "button",
-					className: "dsha_chip_x",
-					"aria-label": t("remove"),
-					title: t("remove"),
-					onClick: (event) => { event?.stopPropagation?.(); remove(position) },
-				}, "✕"))),
-				problem === "" ? null : React.createElement("span", { className: "dsha_chip_note" }, problem === "no-send" ? t("noSend") : problem));
+		function syncDraft(ctx, t, sessionId) {
+			const scope = ctx.sessions.scope(sessionId);
+			if (scope === undefined) return;
+			const input = ctx.uiConversation.input.for(scope);
+			const block = composeBatch(itemsOf(sessionId), t);
+			const current = String(input.state?.getSnapshot?.().draft ?? "");
+			const previous = lastBlock.get(sessionId) ?? "";
+			const base = previous !== "" && current.endsWith(previous)
+				? current.slice(0, current.length - previous.length).trimEnd()
+				: current.trimEnd();
+			const next = block === "" ? base : (base === "" ? block : `${base}\n\n${block}`);
+			if (next === current) return;
+			lastBlock.set(sessionId, block);
+			input.setDraft(next);
 		}
 		//#endregion
 
@@ -503,86 +440,49 @@ window.__ModuleLoader__.load({
 					offer(onScreen(), t);
 				};
 				const onKey = (event) => { if (event.key === "Escape") dismiss() };
-				/**
-				 * Sending from the composer carries the waiting annotations with it.
-				 *
-				 * Captured before the composer sees the key: its own submit would post the draft
-				 * alone and leave the annotations behind. The draft is read from the textarea and
-				 * cleared by hand, because the composer exposes no write API — the plugin can only
-				 * replace text when a Session is first prepared.
-				 */
-				const onComposerEnter = (event) => {
-					if (event.key !== "Enter" || event.shiftKey === true || event.isComposing === true) return;
-					const target = event.target;
-					if (target?.closest?.("[data-dsh-annotate]")) return;
-					// The composer is a contenteditable draft editor; a textarea is accepted too, so
-					// this keeps working if that surface ever changes.
-					const inEditor = target?.isContentEditable === true
-						|| target?.closest?.('[contenteditable="true"]') !== null;
-					const textarea = target?.tagName === "TEXTAREA";
-					if (!inEditor && textarea !== true) return;
-					// Prefer the Session on screen; fall back to whichever one is holding annotations.
-					const sessionId = onScreen() ?? [...pending.keys()].find(id => itemsOf(id).length > 0) ?? "";
-					const items = itemsOf(sessionId);
-					if (items.length === 0) return;
-					const batch = composeBatch(items, t);
-					if (!sendable(batch)) return;
-					const raw = textarea ? target.value : target.innerText ?? target.textContent ?? "";
-					const draft = String(raw).trim();
-					const text = draft === "" ? batch : `${draft}\n\n${batch}`;
-					event.preventDefault();
-					event.stopPropagation();
-					void flush(sessionId, text);
-				};
 				const onScroll = () => { if (editing === null) dismiss() };
-				const onResize = () => { alignToComposer(chipsRow) };
 				document.addEventListener("mouseup", onUp);
 				document.addEventListener("keydown", onKey);
-				document.addEventListener("keydown", onComposerEnter, true);
 				window.addEventListener("scroll", onScroll, true);
-				window.addEventListener("resize", onResize);
 				return () => {
 					document.removeEventListener("mouseup", onUp);
 					document.removeEventListener("keydown", onKey);
-					document.removeEventListener("keydown", onComposerEnter, true);
-					window.removeEventListener("scroll", onScroll, true);
-					window.removeEventListener("resize", onResize);
-					if (layer !== null) { layer.remove(); layer = null }
+						window.removeEventListener("scroll", onScroll, true);
+						if (layer !== null) { layer.remove(); layer = null }
 				};
 			}, "dsh-annotate: selection affordance");
 
-			// The strip at the top of the composer: the same one native attachments draw in,
-			// which is why these read as "attached to what I am about to send".
-			// The send needs a session-scoped context: the slots injection hands out the plugin's
-			// own scope, where `uiConversation` has no session to send into. The sessions service
-			// borrows the retained one, which is the same context the shell's own commands run in.
-			// The proper entry points are the per-session input facade: write the composed text
-			// into the draft, then let the conversation's own submit run. That is the same path
-			// the composer takes, so it clears the box and honours claim/queue rules for us.
-			sendPending = (sessionId, text) => {
-				const scope = ctx.sessions.scope(sessionId);
-				if (scope === undefined) throw new Error(t("noSend"));
-				const input = ctx.uiConversation.input.for(scope);
-				input.setDraft(text);
-				input.submit(undefined, "enter");
-				return Promise.resolve();
-			};
+			// The annotations live in the composer draft, so the conversation own submit
+			// carries them and nothing here touches the keyboard.
+			syncPending = (sessionId) => { syncDraft(ctx, t, sessionId) };
 
-			ctx.slots.inject("conversation.input.dock", () => {
-				const dispose = ctx.slots.register({
-					name: "conversation.input.dock",
-					id: "annotate",
-					order: 5,
-					locale: NS,
-				}, (props) => AnnotateChips({ ...props, sessionId: onScreen() ?? "" }));
-				return () => { dispose() };
-			});
+			// An annotation leaves the list when its block leaves the draft - submitted, or
+			// edited away. Watching the draft keeps that simple.
+			ctx.effect(() => {
+				const timer = window.setInterval?.(() => {
+					for (const sessionId of [...pending.keys()]) {
+						if (itemsOf(sessionId).length === 0) continue;
+						const scope = ctx.sessions.scope(sessionId);
+						const draft = scope === undefined
+							? ""
+							: String(ctx.uiConversation.input.for(scope).state?.getSnapshot?.().draft ?? "");
+						const block = lastBlock.get(sessionId) ?? "";
+						if (block === "" || draft.includes(block)) continue;
+						pending.set(sessionId, []);
+						lastBlock.delete(sessionId);
+						problems.delete(sessionId);
+						changed();
+					}
+				}, 700);
+				return () => { if (timer !== undefined) window.clearInterval?.(timer) };
+			}, "dsh-annotate: draft watch");
 		}
 
 		exports.apply = apply;
 		exports.inject = inject;
 		// Pure helpers, exported so the suite can pin the message it composes.
 		exports.composeBatch = composeBatch;
+		exports.syncDraft = syncDraft;
 		exports.collapse = collapse;
 		exports.pending = pending;
 		//#endregion

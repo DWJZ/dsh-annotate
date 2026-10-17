@@ -65,84 +65,43 @@ check('every comment follows its quote', composed.includes('commentLabel：这�
 check('nothing waiting composes nothing', exports.composeBatch([], t) === '')
 check('a multi-line selection stays on one line', exports.composeBatch([{ quote: 'a\nb', comment: 'c\nd' }], t).includes('「a b」') && exports.composeBatch([{ quote: 'a\nb', comment: 'c\nd' }], t).includes('commentLabel：c d'))
 
-console.log('the dock sends the whole set once')
-const sent = []
+console.log('the annotations go into the composer draft')
+let draft = ''
 const drafts = []
-const listListeners = []
-let registration = null
 const ctx = {
   effect: (fn) => { fn(); return () => {} },
   locale: { register: () => {}, bind: () => t },
   sessions: {
-    list: { getSnapshot: () => ({ ids: ['a'], byId: { a: { id: 'a', retainedBy: { mainView: 1 } } } }), subscribe: (fn) => { listListeners.push(fn); return () => {} } },
+    list: { getSnapshot: () => ({ ids: ['a'], byId: { a: { id: 'a', retainedBy: { mainView: 1 } } } }), subscribe: () => () => {} },
     scope: () => ({}),
   },
-  // The per-session input facade: write the draft, submit, and the app clears the box.
-  uiConversation: { input: { for: () => ({ setDraft: (text) => { drafts.push(text) }, submit: () => { sent.push(drafts.at(-1)) } }) } },
-  slots: { inject: (name, factory) => { factory({ uiConversation: { send: (text) => { sent.push(text); return Promise.resolve() } } }) }, register: (options, component) => { registration = { options, component }; return () => {} } },
+  uiConversation: {
+    input: {
+      for: () => ({
+        state: { getSnapshot: () => ({ draft }) },
+        setDraft: (text) => { draft = text; drafts.push(text) },
+        submit: () => {},
+      }),
+    },
+  },
 }
 exports.apply(ctx)
-check('it registers into the composer dock', registration !== null && registration.options.name === 'conversation.input.dock', JSON.stringify(registration?.options))
-check('ordered before the todo dock', registration.options.order === 5)
-
 exports.pending.set('a', [{ quote: 'q', comment: 'c' }])
-const props = { t, sessionId: 'a', send: (text) => { sent.push(text); return Promise.resolve() } }
-const element = registration.component(props)
-check('the chips render while something waits', element !== null, String(element))
-/** Every button in a rendered tree, in document order. */
-const buttonsIn = (node, found = []) => {
-  if (node === null || typeof node !== 'object') return found
-  if (node.type === 'button') found.push(node)
-  for (const child of node.children ?? []) buttonsIn(child, found)
-  return found
-}
-const buttons = buttonsIn(element)
-check('one remove action per chip, and no separate send button', buttons.length === 1, JSON.stringify(buttons.map(button => button.children?.[0])))
-const removeOne = buttons.find(button => button.children?.[0] === '✕')
-check('each chip can be removed', removeOne !== undefined)
+exports.syncDraft(ctx, t, 'a')
+check('the batch lands in the draft', drafts.length === 1 && drafts[0].includes('quoteLabel：「q」'), JSON.stringify(drafts))
+check('and the person sees it there', draft.includes('commentLabel：c'), JSON.stringify(draft))
+
+console.log('their own words survive a resync')
+draft = `我先说一句\n\n${draft}`
+exports.pending.set('a', [{ quote: 'q', comment: 'c' }, { quote: 'q2', comment: 'c2' }])
+exports.syncDraft(ctx, t, 'a')
+check('the base draft is kept once', draft.startsWith('我先说一句') && draft.split('我先说一句').length === 2, JSON.stringify(draft))
+check('and the new annotation is in', draft.includes('「q2」'), JSON.stringify(draft))
+
+console.log('removing every annotation takes the block back out')
 exports.pending.set('a', [])
-check('an empty list renders nothing', registration.component(props) === null)
-
-console.log('removing one chip keeps the rest')
-exports.pending.set('a', [{ quote: 'one', comment: 'c1' }, { quote: 'two', comment: 'c2' }])
-const twoChips = registration.component(props)
-const xMarks = buttonsIn(twoChips).filter(button => button.children?.[0] === '✕')
-xMarks[0].props.onClick()
-check('only the chosen annotation left', exports.pending.get('a').length === 1 && exports.pending.get('a')[0].quote === 'two', JSON.stringify(exports.pending.get('a')))
-
-
-console.log('Enter in the composer carries the annotations along')
-exports.pending.set('a', [{ quote: 'q', comment: 'c' }])
-let prevented = false
-const composer = {
-  // The real composer is a contenteditable draft editor, not a textarea.
-  isContentEditable: true,
-  innerText: "  我的问题  ",
-  textContent: "  我的问题  ",
-  closest: () => null,
-  dispatchEvent: () => {},
-}
-const enter = {
-  key: 'Enter',
-  shiftKey: false,
-  isComposing: false,
-  target: composer,
-  preventDefault: () => { prevented = true },
-  stopPropagation: () => {},
-}
-const beforeEnter = sent.length
-for (const listener of documentListeners.get('keydown') ?? []) listener(enter)
-await new Promise((resolve) => { setTimeout(resolve, 20) })
-check('the composer submit is taken over', prevented === true)
-check('the draft and the annotations go out as one message',
-  sent.length === beforeEnter + 1 && sent.at(-1).startsWith('我的问题') && sent.at(-1).includes('quoteLabel：「q」'), JSON.stringify(sent.at(-1)))
-check('the composed text went through the draft facade', String(drafts.at(-1)).startsWith('我的问题'), JSON.stringify(drafts.at(-1)))
-check('and the chips are gone', exports.pending.get('a').length === 0)
-
-console.log('with nothing annotated, Enter is left alone')
-let untouched = false
-for (const listener of documentListeners.get('keydown') ?? []) listener({ ...enter, preventDefault: () => { untouched = true } })
-check('the plugin does not intercept it', untouched === false)
+exports.syncDraft(ctx, t, 'a')
+check('only their own words remain', draft === '我先说一句', JSON.stringify(draft))
 
 console.log(failures === 0 ? "\nPASS" : `\n${String(failures)} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)
