@@ -43,7 +43,8 @@ window.__ModuleLoader__.load({
 				".dsha_row{display:flex;align-items:center;gap:8px;justify-content:flex-end}",
 
 				".dsha_grow{flex:1;min-width:0}",
-				"::highlight(dsh-annotate){background-color:color-mix(in srgb, var(--dsw-alias-label-primary) 22%, transparent)}"
+				"::highlight(dsh-annotate){background-color:color-mix(in srgb,CanvasText 22%,transparent)}",
+				"::highlight(dsh-annotate-active){background-color:color-mix(in srgb,#f0b429 34%,transparent)}"
 			].join("");
 			document.head.appendChild(tag);
 		}
@@ -216,6 +217,22 @@ window.__ModuleLoader__.load({
 
 		//#region highlight
 		/**
+		 * Mark the passage being annotated right now, in the text itself.
+		 *
+		 * The card no longer repeats the quote: this paint is what tells the person which words
+		 * the comment belongs to. It is temporary by design and cleared when the card closes.
+		 * @param range - the selected range, or undefined to clear it.
+		 */
+		function paintActive(range) {
+			if (typeof CSS === "undefined" || CSS.highlights === undefined || typeof Highlight === "undefined") return;
+			if (range === undefined || range === null || range.startContainer?.isConnected !== true) {
+				CSS.highlights.delete("dsh-annotate-active");
+				return;
+			}
+			CSS.highlights.set("dsh-annotate-active", new Highlight(range));
+		}
+
+		/**
 		 * Paint one Session's ranges with the Custom Highlight API, when the browser has
 		 * it. Nothing depends on the paint staying: the list is the record.
 		 * @param sessionId - the Session those ranges belong to.
@@ -268,6 +285,7 @@ window.__ModuleLoader__.load({
 		 */
 		function dismiss(immediate = false) {
 			editing = null;
+			paintActive(undefined);
 			if (layer === null) return;
 			const child = layer.firstElementChild;
 			if (child === null) return;
@@ -423,12 +441,6 @@ window.__ModuleLoader__.load({
 			head.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px";
 			head.append(title, close);
 
-			const quote = document.createElement("div");
-			quote.className = "dsha_quote";
-			quote.textContent = read.text;
-			quote.style.cssText = "max-height:88px;overflow:auto;padding:8px 10px;border-radius:10px;font-size:12px;line-height:1.6;"
-				+ "opacity:.85;white-space:pre-wrap;background:color-mix(in srgb,CanvasText 8%,Canvas)";
-
 			const input = document.createElement("textarea");
 			input.className = "dsha_input";
 			input.placeholder = t("placeholder");
@@ -452,8 +464,9 @@ window.__ModuleLoader__.load({
 				button.className = "dsha_icon";
 				button.setAttribute("aria-label", t("save"));
 				button.title = t("save");
+				// Quiet on purpose: Enter saves, and the button is only the discoverable alternative.
 				button.style.cssText = "display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;"
-					+ "border:0;border-radius:50%;background:CanvasText;color:Canvas;cursor:pointer";
+					+ "border:0;border-radius:8px;background:transparent;color:inherit;opacity:.5;cursor:pointer";
 				button.appendChild(icon("M3.5 8.5 L6.5 11.5 L12.5 4.5", 15));
 				return button;
 			};
@@ -483,9 +496,10 @@ window.__ModuleLoader__.load({
 			});
 
 			row.append(hint, save);
-			card.append(head, quote, input, row);
+			card.append(head, input, row);
 			editing = sessionId;
 			openedAt = Date.now();
+			paintActive(read.range);
 			if (rect !== undefined) place(card, rect);
 			input.focus();
 		}
