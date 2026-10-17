@@ -27,8 +27,8 @@ window.__ModuleLoader__.load({
 			const tag = document.createElement("style");
 			tag.setAttribute("data-plugin-css", CSS_ID);
 			tag.textContent = [
-				".dsha_button{position:absolute;z-index:2147483000;display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--dsw-alias-border-secondary);border-radius:8px;background:var(--dsw-alias-bg-elevated);color:var(--dsw-alias-label-primary);font-size:12px;line-height:1.6;box-shadow:0 4px 16px rgb(0 0 0 / 18%);cursor:pointer}",
-				".dsha_card{position:absolute;z-index:2147483001;display:flex;flex-direction:column;gap:8px;width:320px;padding:12px;border:1px solid var(--dsw-alias-border-secondary);border-radius:12px;background:var(--dsw-alias-bg-elevated);box-shadow:0 8px 28px rgb(0 0 0 / 22%)}",
+				".dsha_button{position:absolute;z-index:2147483000;display:flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--dsw-alias-border-secondary);border-radius:8px;background:var(--dsw-alias-bg-overlay, Canvas);color:var(--dsw-alias-label-primary);font-size:12px;line-height:1.6;box-shadow:0 4px 16px rgb(0 0 0 / 18%);cursor:pointer}",
+				".dsha_card{position:absolute;z-index:2147483001;display:flex;flex-direction:column;gap:8px;width:320px;padding:12px;border:1px solid var(--dsw-alias-border-secondary);border-radius:12px;background:var(--dsw-alias-bg-overlay, Canvas);box-shadow:0 8px 28px rgb(0 0 0 / 22%)}",
 				".dsha_quote{max-height:72px;overflow:auto;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:1.6;white-space:pre-wrap}",
 				".dsha_input{width:100%;min-height:64px;resize:vertical;padding:8px;border:1px solid var(--dsw-alias-border-secondary);border-radius:8px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px}",
 				".dsha_row{display:flex;align-items:center;gap:8px;justify-content:flex-end}",
@@ -235,8 +235,11 @@ window.__ModuleLoader__.load({
 			button.type = "button";
 			button.className = "dsha_button";
 			button.textContent = t("annotate");
-			button.addEventListener("click", (event) => {
+			button.addEventListener("mousedown", (event) => {
+				// Opening the editor on mousedown, not click: a click clears the selection
+				// first, and that selection is the quote the annotation carries.
 				event.preventDefault();
+				event.stopPropagation();
 				editor(sessionId, read, t);
 			});
 			place(button, rect);
@@ -350,7 +353,12 @@ window.__ModuleLoader__.load({
 			};
 
 			ctx.effect(() => {
-				const onUp = () => { offer(ctx, onScreen(), t) };
+				const onUp = (event) => {
+					// A press inside this plugin's own UI must not rebuild the layer: it would
+					// unmount the editor the same press is opening.
+					if (event?.target?.closest?.("[data-dsh-annotate]")) return;
+					offer(ctx, onScreen(), t);
+				};
 				const onKey = (event) => { if (event.key === "Escape") dismiss() };
 				const onScroll = () => { if (editing === null) dismiss() };
 				document.addEventListener("mouseup", onUp);
