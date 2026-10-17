@@ -576,19 +576,35 @@ window.__ModuleLoader__.load({
 			};
 
 			ctx.effect(() => {
-				const onUp = (event) => {
-					// A press inside this plugin's own UI must not rebuild the layer: it would
-					// unmount the editor the same press is opening.
-					const inside = event?.target?.closest?.("[data-dsh-annotate]") != null;
-					if (inside) return;
-					// A press anywhere else closes an open editor: the card belongs to the selection
-					// that opened it. The release of the press that opened it is not "anywhere else" —
-					// the card may have been placed away from the cursor, leaving bare text under it.
+				/** The selection text present when the press began, so a plain click is not a new one. */
+				let pressSelection = null;
+				const onDown = (event) => {
+					// A press inside this plugin's own UI belongs to it: the button opens the editor on
+					// exactly this press.
+					if (event?.target?.closest?.("[data-dsh-annotate]") != null) return;
 					if (editing !== null) {
+						// The release of the press that opened the card is not "anywhere else": the card
+						// may sit away from the cursor, leaving bare text under it.
 						if (Date.now() - openedAt < 300) return;
 						dismiss();
 						return;
 					}
+					// The button belongs to the selection that produced it. Pressing anywhere else takes
+					// it away now, before the release, so it cannot outlive the highlight.
+					pressSelection = String(window.getSelection?.() ?? "");
+					dismiss();
+				};
+				const onUp = (event) => {
+					// A press inside this plugin's own UI must not rebuild the layer: it would
+					// unmount the editor the same press is opening.
+					if (event?.target?.closest?.("[data-dsh-annotate]") != null) return;
+					if (editing !== null) return;
+					// Only a release that left a *different* selection earns a new button. A click on a
+					// table cell, a button, or padding often leaves the old selection untouched, and
+					// re-offering it there would resurrect a button the press just removed.
+					const now = String(window.getSelection?.() ?? "");
+					if (pressSelection !== null && now === pressSelection) { dismiss(); return; }
+					pressSelection = null;
 					const point = typeof event?.clientX === "number" && typeof event?.clientY === "number"
 						? { x: event.clientX, y: event.clientY }
 						: undefined;
@@ -632,11 +648,13 @@ window.__ModuleLoader__.load({
 				};
 				// Capture phase: a control that stops propagation on its own mouseup must not be able
 				// to leave the button or the card behind.
+				document.addEventListener("mousedown", onDown, true);
 				document.addEventListener("mouseup", onUp, true);
 				document.addEventListener("keydown", onKey);
 				document.addEventListener("keydown", onComposerEnter, true);
 				window.addEventListener("scroll", onScroll, true);
 				return () => {
+					document.removeEventListener("mousedown", onDown, true);
 					document.removeEventListener("mouseup", onUp, true);
 					document.removeEventListener("keydown", onKey);
 					document.removeEventListener("keydown", onComposerEnter, true);
