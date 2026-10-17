@@ -127,5 +127,21 @@ check('clamped inward when neither side fits',
 check('and clamped away from the right edge',
   exports.placeMath({ rect: { left: 990, top: 0, bottom: 20 }, size, viewport }).left === 1000 - 340 - 8)
 
+
+console.log('only the Session text can be annotated')
+const selectionOf = (node, text = 'some text') => ({
+  isCollapsed: false,
+  toString: () => text,
+  anchorNode: node,
+  rangeCount: 0,
+  getRangeAt: () => undefined,
+})
+const tag = { nodeType: 3, parentElement: { closest: (selector) => (selector.includes('contenteditable') ? {} : null) } }
+check('a composer selection is refused', exports.readSelection(selectionOf(tag)) === undefined)
+const message = { nodeType: 3, parentElement: { closest: () => null } }
+check('a message selection is accepted', exports.readSelection(selectionOf(message))?.text === 'some text')
+const own = { nodeType: 3, parentElement: { closest: (selector) => (selector.includes('data-dsh-annotate') ? {} : null) } }
+check('a selection inside this plugin UI is refused', exports.readSelection(selectionOf(own)) === undefined)
+
 console.log(failures === 0 ? "\nPASS" : `\n${String(failures)} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)

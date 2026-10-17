@@ -280,7 +280,11 @@ window.__ModuleLoader__.load({
 			if (text === "") return undefined;
 			const node = selection.anchorNode;
 			const element = node === null ? null : node.nodeType === 1 ? node : node.parentElement;
-			if (element !== null && element.closest?.("[data-dsh-annotate]") !== null) return undefined;
+			if (element === null || element === undefined) return undefined;
+			// Only the Session's own text is annotatable: never this plugin's UI, and never an
+			// editable surface — the composer, its placeholder, or the annotation box itself.
+			if (element.closest?.("[data-dsh-annotate]") !== null) return undefined;
+			if (element.closest?.('[contenteditable="true"], textarea, input') != null) return undefined;
 			const range = selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : undefined;
 			return { text, range };
 		}
@@ -512,6 +516,10 @@ window.__ModuleLoader__.load({
 					// A press inside this plugin's own UI must not rebuild the layer: it would
 					// unmount the editor the same press is opening.
 					if (event?.target?.closest?.("[data-dsh-annotate]")) return;
+					// An open editor owns the interaction: the release that follows its opening
+					// press lands wherever the card was moved away from, and re-offering there
+					// would wipe the card that just appeared.
+					if (editing !== null) return;
 					offer(onScreen(), t);
 				};
 				const onKey = (event) => { if (event.key === "Escape") dismiss() };
@@ -560,6 +568,7 @@ window.__ModuleLoader__.load({
 		exports.inject = inject;
 		// Pure helpers, exported so the suite can pin the message it composes.
 		exports.composeBatch = composeBatch;
+		exports.readSelection = readSelection;
 		exports.placeMath = placeMath;
 
 		exports.collapse = collapse;
