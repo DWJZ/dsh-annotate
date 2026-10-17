@@ -133,7 +133,7 @@ const selectionOf = (node, text = 'some text') => ({
 })
 const tag = { nodeType: 3, parentElement: { closest: (selector) => (selector.includes('contenteditable') ? {} : null) } }
 check('a composer selection is refused', exports.readSelection(selectionOf(tag)) === undefined)
-const message = { nodeType: 3, parentElement: { closest: () => null } }
+const message = { nodeType: 3, parentElement: { closest: (selector) => (String(selector).includes('data-chat-turn') ? {} : null) } }
 check('a message selection is accepted', exports.readSelection(selectionOf(message))?.text === 'some text')
 const own = { nodeType: 3, parentElement: { closest: (selector) => (selector.includes('data-dsh-annotate') ? {} : null) } }
 check('a selection inside this plugin UI is refused', exports.readSelection(selectionOf(own)) === undefined)
@@ -186,6 +186,16 @@ globalThis.document.querySelector = (selector) => (String(selector).includes('da
 check('the composer takes the focus', exports.focusComposer() === true && fakeComposer.focused === 1)
 globalThis.document.querySelector = () => null
 check('and a missing composer is reported, not thrown', exports.focusComposer() === false)
+
+
+console.log('only conversation rows are annotatable')
+const rowClosest = (hit) => (selector) => (hit.includes(String(selector).slice(0, 20)) || String(selector).includes('data-chat-turn') ? {} : null)
+check('a settings panel is refused', exports.annotatableTarget({ closest: () => null }) === false)
+check('a dialog inside a row is refused',
+  exports.annotatableTarget({ closest: (selector) => (String(selector).includes('role="dialog"') ? {} : {}) }) === false)
+check('an answer inside a conversation row is accepted',
+  exports.annotatableTarget({ closest: (selector) => (String(selector).includes('data-chat-turn') ? {} : null) }) === true)
+check('the composer is refused even inside a row', exports.annotatableTarget({ closest: () => ({}) }) === false)
 
 console.log(failures === 0 ? "\nPASS" : `\n${String(failures)} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)

@@ -216,6 +216,28 @@ window.__ModuleLoader__.load({
 		//#endregion
 
 		//#region highlight
+		/** Markers only the conversation rows carry; nothing else in the shell has all three. */
+		const CHAT_ROW = "[data-chat-turn], [data-chat-anchor-key], [data-chat-flow-key]";
+
+		/** Surfaces that are never annotatable, whatever they contain. */
+		const FOREIGN = '[data-dsh-annotate], [contenteditable="true"], textarea, input, '
+			+ '[role="dialog"], [role="menu"], [role="tooltip"], [aria-modal="true"]';
+
+		/**
+		 * Whether a selection anchored in this element is session text worth annotating.
+		 *
+		 * Settings sheets, menus and panels are ordinary DOM outside the conversation, and their
+		 * text is just as selectable as an answer — so the test is positive: the anchor must sit
+		 * inside a conversation row, and must not sit on an editable or a foreign surface.
+		 * @param element - the selection's anchor element.
+		 * @returns whether the plugin should offer to annotate it.
+		 */
+		function annotatableTarget(element) {
+			if (element === null || element === undefined) return false;
+			if (element.closest?.(FOREIGN) != null) return false;
+			return element.closest?.(CHAT_ROW) != null;
+		}
+
 		/**
 		 * What a press outside this plugin's own UI should do.
 		 * @param facts - whether the press was inside the plugin UI, whether an editor is open, and
@@ -355,10 +377,9 @@ window.__ModuleLoader__.load({
 			const node = selection.anchorNode;
 			const element = node === null ? null : node.nodeType === 1 ? node : node.parentElement;
 			if (element === null || element === undefined) return undefined;
-			// Only the Session's own text is annotatable: never this plugin's UI, and never an
-			// editable surface — the composer, its placeholder, or the annotation box itself.
-			if (element.closest?.("[data-dsh-annotate]") !== null) return undefined;
-			if (element.closest?.('[contenteditable="true"], textarea, input') != null) return undefined;
+			// Only the Session's own text is annotatable: never this plugin's UI, never an editable
+			// surface, and never a panel that merely happens to be selectable.
+			if (!annotatableTarget(element)) return undefined;
 			const range = selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : undefined;
 			return { text, range };
 		}
@@ -753,6 +774,7 @@ window.__ModuleLoader__.load({
 		// Pure helpers, exported so the suite can pin the message it composes.
 		exports.composeBatch = composeBatch;
 		exports.readSelection = readSelection;
+		exports.annotatableTarget = annotatableTarget;
 		exports.pressAction = pressAction;
 		exports.focusComposer = focusComposer;
 		exports.offerAction = offerAction;
