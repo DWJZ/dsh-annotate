@@ -414,7 +414,12 @@ window.__ModuleLoader__.load({
 			// A missing scope is not an error the caller can fix, but it is the reason nothing
 			// reached the composer, so say so instead of returning silently.
 			if (scope === undefined) return "scope-missing";
-			const input = ctx.uiConversation.input.for(scope);
+			// The session-scoped face carries the input resolver; the root projection does not.
+			const resolver = scope.uiConversation?.input
+				?? ctx.uiConversation?.input
+				?? ctx.uiSession?.input;
+			if (resolver === undefined || typeof resolver.for !== "function") return "input-missing";
+			const input = resolver.for(scope);
 			const block = composeBatch(itemsOf(sessionId), t);
 			const current = String(input.state?.getSnapshot?.().draft ?? "");
 			const previous = lastBlock.get(sessionId) ?? "";
