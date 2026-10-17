@@ -390,9 +390,38 @@ window.__ModuleLoader__.load({
 			// rebuild the layer from under an open editor.
 			card.addEventListener("mousedown", (event) => { event.stopPropagation(); });
 
+			/** One inline stroke icon, sized for a small button. */
+			const icon = (path, size) => {
+				const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+				svg.setAttribute("viewBox", "0 0 16 16");
+				svg.setAttribute("width", String(size));
+				svg.setAttribute("height", String(size));
+				svg.setAttribute("fill", "none");
+				svg.setAttribute("stroke", "currentColor");
+				svg.setAttribute("stroke-width", "1.6");
+				svg.setAttribute("stroke-linecap", "round");
+				svg.setAttribute("stroke-linejoin", "round");
+				svg.setAttribute("aria-hidden", "true");
+				const shape = document.createElementNS("http://www.w3.org/2000/svg", "path");
+				shape.setAttribute("d", path);
+				svg.appendChild(shape);
+				return svg;
+			};
 			const title = document.createElement("div");
 			title.textContent = t("title");
 			title.style.cssText = "font-size:12px;font-weight:600;opacity:.65";
+			const close = document.createElement("button");
+			close.type = "button";
+			close.className = "dsha_icon";
+			close.setAttribute("aria-label", t("cancel"));
+			close.title = t("cancel");
+			close.style.cssText = "display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;"
+				+ "border:0;border-radius:8px;background:transparent;color:inherit;opacity:.6;cursor:pointer";
+			close.appendChild(icon("M4 4 L12 12 M12 4 L4 12", 14));
+			close.addEventListener("click", () => { dismiss(); });
+			const head = document.createElement("div");
+			head.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px";
+			head.append(title, close);
 
 			const quote = document.createElement("div");
 			quote.className = "dsha_quote";
@@ -417,14 +446,15 @@ window.__ModuleLoader__.load({
 			hint.textContent = t("hint");
 			hint.style.cssText = "flex:1;font-size:11px;opacity:.55";
 
-			const action = (text, primary) => {
+			const saveButton = () => {
 				const button = document.createElement("button");
 				button.type = "button";
-				button.textContent = text;
-				button.style.cssText = "height:28px;padding:0 12px;border-radius:8px;font-size:12px;cursor:pointer;font:inherit;"
-					+ (primary
-						? "background:CanvasText;color:Canvas;border:1px solid transparent;font-weight:600"
-						: "background:transparent;color:inherit;border:1px solid color-mix(in srgb,CanvasText 22%,transparent)");
+				button.className = "dsha_icon";
+				button.setAttribute("aria-label", t("save"));
+				button.title = t("save");
+				button.style.cssText = "display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;"
+					+ "border:0;border-radius:50%;background:CanvasText;color:Canvas;cursor:pointer";
+				button.appendChild(icon("M3.5 8.5 L6.5 11.5 L12.5 4.5", 15));
 				return button;
 			};
 			const commit = () => {
@@ -436,9 +466,7 @@ window.__ModuleLoader__.load({
 				hint.textContent = problem === "no-send" ? t("noSend") : problem;
 				hint.style.opacity = "1";
 			};
-			const cancel = action(t("cancel"), false);
-			cancel.addEventListener("click", () => { dismiss(); });
-			const save = action(t("save"), true);
+			const save = saveButton();
 			save.addEventListener("click", commit);
 			// An Enter that is still composing a character belongs to the input method, not to
 			// this card: with a Chinese IME the same key both accepts the candidate and would
@@ -454,8 +482,8 @@ window.__ModuleLoader__.load({
 				commit();
 			});
 
-			row.append(hint, cancel, save);
-			card.append(title, quote, input, row);
+			row.append(hint, save);
+			card.append(head, quote, input, row);
 			editing = sessionId;
 			openedAt = Date.now();
 			if (rect !== undefined) place(card, rect);
