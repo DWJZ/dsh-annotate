@@ -59,7 +59,7 @@ const composed = exports.composeBatch([
   { quote: '这一步会覆盖原文件', comment: '这里应该先备份' },
   { quote: '大约 3 秒', comment: '这个数字是怎么来的？' },
 ], t)
-check('it opens by asking for a point-by-point answer', composed.startsWith('intro'), JSON.stringify(composed.slice(0, 40)))
+check('it opens by presenting the annotations', composed.startsWith('intro'), JSON.stringify(composed.slice(0, 40)))
 check('every quote is numbered and quoted', composed.includes('1. quoteLabel：「这一步会覆盖原文件」') && composed.includes('2. quoteLabel：「大约 3 秒」'), composed)
 check('every comment follows its quote', composed.includes('commentLabel：这里应该先备份') && composed.includes('commentLabel：这个数字是怎么来的？'), composed)
 check('nothing waiting composes nothing', exports.composeBatch([], t) === '')
@@ -218,6 +218,12 @@ console.log('the composer keeps its send button operable while annotations wait'
 check('a draft holding only the placeholder reads as blank', exports.blankDraft('\u200b') === true)
 check('and a real draft does not', exports.blankDraft('hi') === false)
 check('the placeholder is exported so the composer path can strip it', typeof exports.PLACEHOLDER === 'string')
+
+console.log('the message presents the annotations without demanding per-item answers')
+const presentation = exports.composeBatch([{ quote: 'q', comment: 'c' }], (key) => key)
+check('it opens by saying these are annotations', presentation.startsWith('intro'), presentation.split('\n')[0])
+check('and does not ask for a point-by-point reply',
+  !/逐条|address each|reply to each/i.test(presentation), presentation.split('\n')[0])
 
 console.log(failures === 0 ? "\nPASS" : `\n${String(failures)} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)

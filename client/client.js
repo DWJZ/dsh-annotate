@@ -65,7 +65,7 @@ window.__ModuleLoader__.load({
 			sendAll: "一起发送",
 			clear: "清空",
 			noSend: "当前会话还不接受发送，先在这里攒着。",
-			intro: "请逐条回应我对你上面回答的标注：",
+			intro: "以下是我对你上面回答的标注：",
 			quoteLabel: "引用",
 			commentLabel: "标注",
 		};
@@ -82,7 +82,7 @@ window.__ModuleLoader__.load({
 			sendAll: "Send them together",
 			clear: "Clear",
 			noSend: "This Session cannot accept a message yet; the annotations wait here.",
-			intro: "Please address each of my annotations on your answer above:",
+			intro: "Here are my annotations on your answer above:",
 			quoteLabel: "Quote",
 			commentLabel: "Comment",
 		};
