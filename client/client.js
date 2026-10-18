@@ -127,6 +127,64 @@ window.__ModuleLoader__.load({
 		 * @param text - the message body.
 		 * @returns the send, or undefined when nothing could be sent.
 		 */
+		/**
+		 * A draft that keeps the composer's own send button operable.
+		 *
+		 * The button is disabled while the draft is empty, and annotations live outside the draft,
+		 * so an annotation-only message has no way to start from a click. A zero-width space makes
+		 * the draft non-empty without showing anything; it is stripped before the message leaves.
+		 */
+		const PLACEHOLDER = "\u200b";
+
+		/** Whether a draft carries nothing but the placeholder. */
+		function blankDraft(text) {
+			return String(text ?? "").replaceAll(PLACEHOLDER, "").trim() === "";
+		}
+
+		/**
+		 * Keep the placeholder in step with the waiting annotations.
+		 *
+		 * Only touches an empty draft or a draft that is exactly the placeholder, so a person's own
+		 * words are never overwritten.
+		 * @param hasItems - whether any annotation is waiting.
+		 */
+		function syncPlaceholder(hasItems) {
+			if (typeof inputActions?.setDraft !== "function") return;
+			const draft = String(lastInput?.draft ?? "");
+			if (hasItems === true) {
+				if (draft.trim() === "") inputActions.setDraft(PLACEHOLDER);
+				return;
+			}
+			if (blankDraft(draft)) inputActions.setDraft("");
+		}
+
+		/**
+		 * The composer's own submit button.
+		 *
+		 * Clicking it is the only path that carries the draft's attachments: the plugin cannot
+		 * serialize them itself, and a bare `prompt()` would send the text alone and leave the
+		 * images behind.
+		 * @returns the button, or null when this build renders it differently.
+		 */
+		function composerPrimary() {
+			if (typeof document.querySelector !== "function") return null;
+			return document.querySelector('[data-composer-card] button[class*="primary"]');
+		}
+
+		/**
+		 * Send one composed message through the composer.
+		 * @param text - the draft the person should have typed, annotations included.
+		 * @returns whether the composer accepted the handoff.
+		 */
+		function submitThroughComposer(text) {
+			if (typeof inputActions?.setDraft !== "function") return false;
+			inputActions.setDraft(text);
+			const button = composerPrimary();
+			if (button === null || button === undefined || button.disabled === true) return false;
+			button.click?.();
+			return true;
+		}
+
 		function flush(sessionId, text) {
 			if (!sendable(text)) return undefined;
 			if (typeof sendPending !== "function") {
@@ -147,6 +205,7 @@ window.__ModuleLoader__.load({
 			return Promise.resolve(started).then(() => {
 				pending.set(sessionId, []);
 				problems.delete(sessionId);
+				syncPlaceholder(false);
 				changed();
 				return true;
 			}).catch((failure) => {
@@ -173,6 +232,8 @@ window.__ModuleLoader__.load({
 				ranges.set(sessionId, painted);
 				paint(sessionId, painted);
 			}
+			// The button is disabled on an empty draft, and annotations live outside it.
+			syncPlaceholder(list.length > 0);
 			changed();
 		}
 		//#endregion
@@ -609,6 +670,7 @@ window.__ModuleLoader__.load({
 				const list = itemsOf(sessionId).slice();
 				list.splice(position, 1);
 				pending.set(sessionId, list);
+				syncPlaceholder(list.length > 0);
 				changed();
 			};
 
@@ -710,19 +772,50 @@ window.__ModuleLoader__.load({
 					const batch = composeBatch(itemsOf(sessionId), t);
 					if (!sendable(batch)) return;
 					const raw = String(lastInput?.draft ?? (textarea ? target.value : target.innerText ?? target.textContent ?? ""));
-					const draft = String(raw).trim();
+					// The placeholder is not something the person typed.
+					const draft = blankDraft(raw) ? "" : String(raw).replaceAll(PLACEHOLDER, "").trim();
 					const text = draft === "" ? batch : `${draft}\n\n${batch}`;
 					event.preventDefault();
 					event.stopPropagation();
+					// Handing the message to the composer keeps its attachments and its own clear
+					// logic in play; only a build without that button falls back to a bare prompt.
+					if (submitThroughComposer(text)) {
+						pending.set(sessionId, []);
+						problems.delete(sessionId);
+						changed();
+						return;
+					}
 					void flush(sessionId, text).then((sent) => {
-						// Only clear the box when the message really went out; a failed send must
-						// leave the words where the person can try again.
 						if (sent !== true) return;
-						// The composer slot hands plugins the native draft writer; there is no
-						// older runtime to support, so this is the only way the box gets cleared.
 						inputActions?.setDraft?.("");
 					});
 				};
+				/**
+				 * The send button means the same thing as Enter.
+				 *
+				 * With an annotation waiting the draft holds only a placeholder, so the composer's own
+				 * submit would send that and nothing else. Intercepting the click lets one gesture
+				 * carry the annotations the way Enter does.
+				 */
+				const onPrimaryClick = (event) => {
+					if (editing !== null) return;
+					const button = composerPrimary();
+					if (button === null || button === undefined || event.target !== button) return;
+					const sessionId = onScreen() ?? [...pending.keys()].find(id => itemsOf(id).length > 0) ?? "";
+					const batch = composeBatch(itemsOf(sessionId), t);
+					if (!sendable(batch)) return;
+					const draft = blankDraft(lastInput?.draft) ? "" : String(lastInput?.draft ?? "").replaceAll(PLACEHOLDER, "").trim();
+					const text = draft === "" ? batch : `${draft}\n\n${batch}`;
+					event.preventDefault();
+					event.stopPropagation();
+					if (submitThroughComposer(text)) {
+						pending.set(sessionId, []);
+						problems.delete(sessionId);
+						changed();
+					}
+				};
+				document.addEventListener("click", onPrimaryClick, true);
+
 				// Capture phase: a control that stops propagation on its own mouseup must not be able
 				// to leave the button or the card behind.
 				document.addEventListener("mousedown", onDown, true);
@@ -731,6 +824,7 @@ window.__ModuleLoader__.load({
 				document.addEventListener("keydown", onComposerEnter, true);
 				window.addEventListener("scroll", onScroll, true);
 				return () => {
+					document.removeEventListener("click", onPrimaryClick, true);
 					document.removeEventListener("mousedown", onDown, true);
 					document.removeEventListener("mouseup", onUp, true);
 					document.removeEventListener("keydown", onKey);
@@ -773,6 +867,8 @@ window.__ModuleLoader__.load({
 		exports.inject = inject;
 		// Pure helpers, exported so the suite can pin the message it composes.
 		exports.composeBatch = composeBatch;
+		exports.blankDraft = blankDraft;
+		exports.PLACEHOLDER = PLACEHOLDER;
 		exports.readSelection = readSelection;
 		exports.annotatableTarget = annotatableTarget;
 		exports.pressAction = pressAction;

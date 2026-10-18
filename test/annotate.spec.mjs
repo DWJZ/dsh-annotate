@@ -157,7 +157,10 @@ await new Promise((resolve) => { setTimeout(resolve, 20) })
 check('the composer submit is taken over', prevented === true)
 check('one queue message carrying both', drafted.length === 1 && drafted[0].startsWith('queue:我的问题') && drafted[0].includes('quoteLabel：「q」'), JSON.stringify(drafted))
 check('and the chips cleared', exports.pending.get('a').length === 0)
-check('and the composer was emptied through the native action', written.length === 1 && written[0] === '', JSON.stringify(written))
+// The merged message goes through the composer's draft; the empty write is the fallback's clear.
+check('and the merged text was handed to the composer draft',
+  written.length >= 1 && String(written[0]).includes('quoteLabel：「q」'), JSON.stringify(written))
+check('and the composer was emptied afterwards', String(written.at(-1)) === '', JSON.stringify(written))
 
 
 
@@ -196,6 +199,11 @@ check('a dialog inside a row is refused',
 check('an answer inside a conversation row is accepted',
   exports.annotatableTarget({ closest: (selector) => (String(selector).includes('data-chat-turn') ? {} : null) }) === true)
 check('the composer is refused even inside a row', exports.annotatableTarget({ closest: () => ({}) }) === false)
+
+console.log('the composer keeps its send button operable while annotations wait')
+check('a draft holding only the placeholder reads as blank', exports.blankDraft('\u200b') === true)
+check('and a real draft does not', exports.blankDraft('hi') === false)
+check('the placeholder is exported so the composer path can strip it', typeof exports.PLACEHOLDER === 'string')
 
 console.log(failures === 0 ? "\nPASS" : `\n${String(failures)} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)
