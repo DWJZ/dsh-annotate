@@ -101,6 +101,8 @@ window.__ModuleLoader__.load({
 		 * The composer's Enter handler runs outside any slot, so the one thing it needs is
 		 * this closure: the injection is where a session-scoped ctx exists.
 		 */
+		/** Set while the plugin presses the composer's own button on the person's behalf. */
+		let forwarding = false;
 		let sendPending = null;
 		/** `InputActions` from the composer slot: the native way to write the draft. */
 		let inputActions = null;
@@ -181,7 +183,8 @@ window.__ModuleLoader__.load({
 			inputActions.setDraft(text);
 			const button = composerPrimary();
 			if (button === null || button === undefined || button.disabled === true) return false;
-			button.click?.();
+			forwarding = true;
+			try { button.click?.() } finally { forwarding = false }
 			return true;
 		}
 
@@ -798,9 +801,15 @@ window.__ModuleLoader__.load({
 				 * carry the annotations the way Enter does.
 				 */
 				const onPrimaryClick = (event) => {
+					// Handing the message over presses this same button; without the flag that click
+					// would come straight back here.
+					if (forwarding === true) return;
 					if (editing !== null) return;
 					const button = composerPrimary();
-					if (button === null || button === undefined || event.target !== button) return;
+					if (button === null || button === undefined) return;
+					// A click on the icon inside the button targets the icon, not the button.
+					const pressed = event.target?.closest?.("button") ?? event.target;
+					if (pressed !== button) return;
 					const sessionId = onScreen() ?? [...pending.keys()].find(id => itemsOf(id).length > 0) ?? "";
 					const batch = composeBatch(itemsOf(sessionId), t);
 					if (!sendable(batch)) return;
