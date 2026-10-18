@@ -868,6 +868,13 @@ window.__ModuleLoader__.load({
 		// Pure helpers, exported so the suite can pin the message it composes.
 		exports.composeBatch = composeBatch;
 		exports.blankDraft = blankDraft;
+		// Test seams: the placeholder path needs a draft to write into, and the client bundle keeps
+		// its plumbing module-private otherwise.
+		exports.syncPlaceholderForTest = (hasItems) => syncPlaceholder(hasItems);
+		exports.__setTestHooks = (hooks) => {
+			if (hooks?.inputActions !== undefined) inputActions = hooks.inputActions;
+			if (hooks?.getDraft !== undefined) lastInput = { draft: hooks.getDraft() };
+		};
 		exports.PLACEHOLDER = PLACEHOLDER;
 		exports.readSelection = readSelection;
 		exports.annotatableTarget = annotatableTarget;

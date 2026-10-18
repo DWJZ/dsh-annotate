@@ -200,6 +200,20 @@ check('an answer inside a conversation row is accepted',
   exports.annotatableTarget({ closest: (selector) => (String(selector).includes('data-chat-turn') ? {} : null) }) === true)
 check('the composer is refused even inside a row', exports.annotatableTarget({ closest: () => ({}) }) === false)
 
+console.log('an empty draft gains the placeholder so the button can be pressed')
+{
+  const written = []
+  const drafts = { value: '' }
+  exports.__setTestHooks?.({
+    inputActions: { setDraft: (text) => { drafts.value = text; written.push(text) } },
+    getDraft: () => drafts.value,
+  })
+  exports.syncPlaceholderForTest(true)
+  check('the placeholder lands in the empty draft', written.length === 1 && written[0] === exports.PLACEHOLDER, JSON.stringify(written))
+  exports.syncPlaceholderForTest(false)
+  check('and leaves once nothing waits', drafts.value === '' && written.length === 2, JSON.stringify(written))
+}
+
 console.log('the composer keeps its send button operable while annotations wait')
 check('a draft holding only the placeholder reads as blank', exports.blankDraft('\u200b') === true)
 check('and a real draft does not', exports.blankDraft('hi') === false)
